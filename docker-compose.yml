@@ -1,0 +1,40 @@
+services:
+    nginx:
+        image: nginx:1.29.8
+        ports:
+            - "8003:80"
+        volumes:
+            - .:/var/www/test3
+            - ./docker/nginx/hosts:/etc/nginx/conf.d
+            - ./docker/nginx/logs:/var/log/nginx
+        restart: always
+        depends_on:
+            - php
+
+    mysql:
+        image: mysql:9.7.0
+        ports:
+            - "8004:3306"
+        volumes:
+            - ./docker/mysql/data:/var/lib/mysql
+            - ./docker/mysql/init:/docker-entrypoint-initdb.d
+        environment:
+            MYSQL_ROOT_PASSWORD: root
+            MYSQL_DATABASE: task_manager
+            MYSQL_USER: task_manager
+            MYSQL_PASSWORD: task_manager
+        restart: always
+        healthcheck:
+            test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-proot"]
+            timeout: 10s
+            retries: 5
+            start_period: 1s
+
+    php:
+        build: ./docker/php
+        volumes:
+            - .:/var/www/test3
+        restart: always
+        depends_on:
+            mysql:
+                condition: service_healthy
