@@ -21,3 +21,32 @@ services:
 
     # add more service definitions when explicit configuration is needed
     # please note that last definitions always *replace* previous ones
+
+    _instanceof:
+        App\Strategy\SortingStrategyInterface:
+            tags: ['app.sorting_strategy']
+        App\Specification\SpecificationInterface:
+            tags: ['app.task_specification']
+
+    App\Factory\SortingStrategyFactory:
+        arguments:
+            - !tagged_iterator app.sorting_strategy
+    App\Factory\SpecificationFactory:
+        arguments:
+            - !tagged_iterator app.task_specification
+
+    App\Service\CachedTaskLister:
+        decorates: App\Service\TaskLister
+        arguments:
+            $delegate: '@.inner'
+            $cache: '@cache.app.taggable'
+
+    App\Service\TaskListerInterface: '@App\Service\CachedTaskLister'
+
+    App\EventListener\TaskCacheListener:
+        arguments:
+            $cache: '@cache.app.taggable'
+        tags:
+            - { name: 'doctrine.event_listener', event: 'postPersist' }
+            - { name: 'doctrine.event_listener', event: 'postUpdate' }
+            - { name: 'doctrine.event_listener', event: 'postRemove' }

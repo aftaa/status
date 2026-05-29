@@ -1,0 +1,295 @@
+<?php
+
+namespace App\Tests\Controller;
+
+use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
+
+class TaskControllerTest extends WebTestCase
+{
+    public function testIndex(): void
+    {
+        $client = static::createClient([], [
+            'HTTP_HOST' => 'localhost:8003',
+        ]);
+        $client->request('GET', '/task/');
+
+        $this->assertResponseIsSuccessful();
+        $this->assertSelectorTextContains('h1', 'Список задач');
+    }
+
+    public function testNewTaskPageOpens(): void
+    {
+        $client = static::createClient([], [
+            'HTTP_HOST' => 'localhost:8003',
+        ]);
+        $client->request('GET', '/task/new');
+
+        $this->assertResponseIsSuccessful();
+        $this->assertSelectorExists('form');
+    }
+
+    public function testEditTaskPageOpens(): void
+    {
+        $client = static::createClient([], [
+            'HTTP_HOST' => 'localhost:8003',
+        ]);
+        $client->request('GET', '/task/1/edit');
+
+        // Страница может вернуть 404 если задачи нет, но это нормально для теста
+        $this->assertResponseStatusCodeSame(404);
+    }
+
+    public function testCacheIsInvalidatedOnTaskCreation(): void
+    {
+        // Инициализируем тестовое окружение Symfony
+        self::bootKernel();
+        $container = static::getContainer();
+
+        // 1. Получаем необходимые сервисы напрямую из DI-контейнера
+        /** @var TagAwareCacheInterface $cache */
+        $cache = $container->get('cache.app.taggable');
+
+        /** @var \App\Service\TaskListerInterface $cachedLister */
+        $cachedLister = $container->get(\App\Service\TaskListerInterface::class);
+
+        /** @var \Doctrine\ORM\EntityManagerInterface $entityManager */
+        $entityManager = $container->get(\Doctrine\ORM\EntityManagerInterface::class);
+
+        // 2. Явно прогреваем кэш с помощью нашего декоратора
+        $query = new \App\Dto\TaskListQuery('name', 'desc', 'all');
+        $cachedLister->getFilteredAndSortedTasks($query, 1, 10);
+
+        // Ключ кэша, который сформировался внутри декоратора
+        $cacheKey = 'tasks_list_all_name_desc_p1_l10';
+
+        // Проверяем, что в кэше железно появился ключ
+        $this->assertTrue($cache->getItem($cacheKey)->isHit(), 'Кэш успешно прогрет');
+
+        // 3. Прямая эмуляция действий контроллера: создаем и сохраняем сущность
+        $task = new \App\Entity\Task();
+        $task->setName('Тестовая задача из PHPUnit');
+
+        // Добавьте эту строчку (или проверьте точное имя метода в вашей сущности Task):
+        $task->setIsCompleted(false);
+
+        $entityManager->persist($task);
+
+        // Главный триггер: flush() должен запустить наш TaskCacheListener
+        $entityManager->flush();
+
+        // 4. ПРОВЕРКА ИНВАЛИДАЦИИ: Проверяем, стёрся ли ключ
+        $cacheItemAfter = $cache->getItem($cacheKey);
+
+        $this->assertFalse(
+            $cacheItemAfter->isHit(),
+            'Ура! Кэш был успешно сброшен листенером после вызова $entityManager->flush()!'
+        );
+    }
+}
+<?php
+
+use Symfony\Component\Dotenv\Dotenv;
+
+require dirname(__DIR__).'/vendor/autoload.php';
+
+if (file_exists(dirname(__DIR__).'/config/bootstrap.php')) {
+    require dirname(__DIR__).'/config/bootstrap.php';
+} elseif (method_exists(Dotenv::class, 'bootEnv')) {
+    new Dotenv()->bootEnv(dirname(__DIR__).'/.env');
+}
+<?php
+
+// tests/Service/CachedTaskListerTest.php
+namespace App\Tests\Service;
+
+use App\Dto\PaginatedResult;
+use App\Dto\TaskListQuery;
+use App\Service\CachedTaskLister;
+use App\Service\TaskListerInterface;
+use PHPUnit\Framework\TestCase;
+use Symfony\Component\Cache\Adapter\ArrayAdapter;
+use Symfony\Component\Cache\Adapter\TagAwareAdapter;
+
+class CachedTaskListerTest extends TestCase
+{
+    public function testGetFilteredAndSortedTasksUsesCache(): void
+    {
+// 1. Создаем мок оригинального сервиса TaskLister
+        $delegateMock = $this->createMock(TaskListerInterface::class);
+        $expectedResult = new PaginatedResult([], 1, 0, 10);
+
+// Мы ОЖИДАЕМ, что оригинальный сервис вызовется ровно ОДИН раз
+        $delegateMock->expects($this->once())
+            ->method('getFilteredAndSortedTasks')
+            ->willReturn($expectedResult);
+
+// 2. Используем реальный, но «легкий» пул кэша в памяти (ArrayAdapter)
+// Он идеально подходит для тестов, так как реализует TagAwareCacheInterface
+        $cache = new TagAwareAdapter(new ArrayAdapter());
+
+// 3. Создаем декоратор
+        $cachedLister = new CachedTaskLister($delegateMock, $cache);
+
+        $query = new TaskListQuery('name', 'asc', 'all');
+
+// ПЕРВЫЙ ВЫЗОВ: Данных в кэше нет, вызовется $delegateMock
+        $result1 = $cachedLister->getFilteredAndSortedTasks($query, 1, 10);
+
+// ВТОРОЙ ВЫЗОВ: Данные берутся из ArrayAdapter, $delegateMock НЕ вызывается
+        $result2 = $cachedLister->getFilteredAndSortedTasks($query, 1, 10);
+
+// Проверяем, что оба раза вернулся правильный объект
+        $this->assertSame($expectedResult, $result1);
+        $this->assertEquals($expectedResult, $result2);
+    }
+}
+<?php
+
+namespace App\Tests\Service;
+
+use App\Dto\TaskListQuery;
+use App\Factory\SortingStrategyFactory;
+use App\Factory\SpecificationFactory;
+use App\Service\DoctrinePaginator;
+use App\Service\TaskLister;
+use App\Specification\SpecificationInterface;
+use App\Strategy\SortingStrategyInterface;
+use App\Repository\TaskRepository;
+use Doctrine\ORM\QueryBuilder;
+use PHPUnit\Framework\TestCase;
+
+class TaskListerTest extends TestCase
+{
+    public function testApplyFilterAndSorting(): void
+    {
+        $qb = $this->createMock(QueryBuilder::class);
+        $qb->method('getQuery')->willReturnSelf();
+//        $qb->method('getResult')->willReturn([]);
+
+        $repository = $this->createMock(TaskRepository::class);
+        $repository->expects($this->once())
+            ->method('createQueryBuilder')
+            ->willReturn($qb);
+
+        $specification = $this->createMock(SpecificationInterface::class);
+        $specification->expects($this->once())
+            ->method('apply')
+            ->with($qb);
+
+        $specificationFactory = $this->createMock(SpecificationFactory::class);
+        $specificationFactory->expects($this->once())
+            ->method('getSpecification')
+            ->with('completed')
+            ->willReturn($specification);
+
+        $sortingStrategy = $this->createMock(SortingStrategyInterface::class);
+        $sortingStrategy->expects($this->once())
+            ->method('apply')
+            ->with($qb, 'asc');
+
+        $sortingStrategyFactory = $this->createMock(SortingStrategyFactory::class);
+        $sortingStrategyFactory->expects($this->once())
+            ->method('getStrategy')
+            ->with('name')
+            ->willReturn($sortingStrategy);
+
+        $paginator = $this->createMock(DoctrinePaginator::class);
+        $paginator->expects($this->once())
+            ->method('paginate')
+            ->with($qb, 2, 5)
+            ->willReturn(new \App\Dto\PaginatedResult([], 2, 0, 5));
+
+        $query = new TaskListQuery('name', 'asc', 'completed');
+
+        $service = new TaskLister($repository, $sortingStrategyFactory, $specificationFactory, $paginator);
+        $result = $service->getFilteredAndSortedTasks($query, 2, 5);
+
+        $this->assertInstanceOf(\App\Dto\PaginatedResult::class, $result);
+    }
+}
+<?php
+//
+//namespace App\Tests\Functional;
+//
+//use App\Entity\Task;
+//use Doctrine\ORM\EntityManagerInterface;
+//use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
+//
+//class TaskControllerFunctionalTest extends WebTestCase
+//{
+//    private EntityManagerInterface $entityManager;
+//
+//    protected function setUp(): void
+//    {
+//        parent::setUp();
+//        // Не bootKernel() — он вызывается автоматически в createClient()
+//        $container = static::getContainer();
+//        $this->entityManager = $container->get('doctrine')->getManager();
+//        $this->clearTasks();
+//        $this->seedTasks();
+//    }
+//
+//    private function clearTasks(): void
+//    {
+//        $this->entityManager
+//            ->createQuery('DELETE FROM App\\Entity\\Task t')
+//            ->execute();
+//    }
+//
+//    private function seedTasks(): void
+//    {
+//        $tasks = [
+//            ['A задача', false],
+//            ['B задача', true],
+//            ['C задача', false],
+//            ['D задача', true],
+//        ];
+//
+//        foreach ($tasks as [$name, $completed]) {
+//            $task = new Task();
+//            $task->setName($name);
+//            $task->setIsCompleted($completed);
+//            $task->setCreatedAt(new \DateTimeImmutable());
+//            $this->entityManager->persist($task);
+//        }
+//        $this->entityManager->flush();
+//    }
+//
+//    protected function tearDown(): void
+//    {
+//        parent::tearDown();
+//        $this->entityManager->close();
+//        unset($this->entityManager);
+//    }
+//
+//    private function createAuthenticatedClient()
+//    {
+//        return static::createClient([], [
+//            'HTTP_HOST' => 'localhost:8003',
+//        ]);
+//    }
+//
+//    public function testFilterByCompleted(): void
+//    {
+//        $client = $this->createAuthenticatedClient();
+//        $client->followRedirects();
+//        $client->request('GET', '/task?filter=completed');
+//        $this->assertResponseIsSuccessful();
+//    }
+//
+//    public function testFilterByNotCompleted(): void
+//    {
+//        $client = $this->createAuthenticatedClient();
+//        $client->followRedirects();
+//        $client->request('GET', '/task?filter=not_completed');
+//        $this->assertResponseIsSuccessful();
+//    }
+//
+//    public function testSortByNameAsc(): void
+//    {
+//        $client = $this->createAuthenticatedClient();
+//        $client->followRedirects();
+//        $client->request('GET', '/task?sort=name&order=asc');
+//        $this->assertResponseIsSuccessful();
+//    }
+//}

@@ -1,0 +1,249 @@
+=== templates/base.html.twig ===
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>{% block title %}Welcome!{% endblock %}</title>
+        <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 128 128%22><text y=%221.2em%22 font-size=%2296%22>⚫️</text><text y=%221.3em%22 x=%220.2em%22 font-size=%2276%22 fill=%22%23fff%22>sf</text></svg>">
+        {% block stylesheets %}
+            <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5/dist/css/bootstrap.min.css">
+        {% endblock %}
+
+        {% block javascripts %}
+            {% block importmap %}{{ importmap('app') }}{% endblock %}
+            <script src="https://cdn.jsdelivr.net/npm/bootstrap@5/dist/js/bootstrap.bundle.min.js" defer></script>
+        {% endblock %}
+
+        {% set frankenphpHotReload = app.request.server.get('FRANKENPHP_HOT_RELOAD') %}
+        {% if frankenphpHotReload %}
+        <meta name="frankenphp-hot-reload:url" content="{{ frankenphpHotReload }}">
+        <script src="https://cdn.jsdelivr.net/npm/idiomorph"></script>
+        <script src="https://cdn.jsdelivr.net/npm/frankenphp-hot-reload/+esm" type="module"></script>
+        {% endif %}
+    </head>
+    <body>
+        {% block body %}{% endblock %}
+    </body>
+</html>
+=== templates/task/new.html.twig ===
+{% extends 'base.html.twig' %}
+
+{% block title %}New Task{% endblock %}
+
+{% block body %}
+<div class="container mt-4">
+    <h1>Create new Task</h1>
+
+    {{ include('task/_form.html.twig') }}
+
+    <a href="{{ path('app_tasks') }}">back to list</a>
+</div>
+{% endblock %}
+=== templates/task/_delete_form.html.twig ===
+<form method="post" action="{{ path('app_task_delete', {'id': task.id}) }}" onsubmit="return confirm('Are you sure you want to delete this item?');">
+    <input type="hidden" name="_token" value="{{ csrf_token('delete' ~ task.id) }}">
+    <button class="btn btn-sm btn-outline-danger">Delete</button>
+</form>
+=== templates/task/index.html.twig ===
+{% extends 'base.html.twig' %}
+
+{% block title %}Список задач{% endblock %}
+
+{% block body %}
+    <div class="container mt-4">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h1>Список задач</h1>
+            <a href="{{ path('app_task_new') }}" class="btn btn-success">
+                ➕ Создать задачу
+            </a>
+        </div>
+
+        <div class="card mb-4">
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="btn-group" role="group">
+                            <a href="{{ path('app_tasks', {page: result.currentPage, filter: 'all', sort: query.sort.value, order: query.order.value}) }}"
+                               class="btn {{ query.filter.isAll ? 'btn-primary' : 'btn-outline-secondary' }}">Все</a>
+                            <a href="{{ path('app_tasks', {page: result.currentPage, filter: 'completed', sort: query.sort.value, order: query.order.value}) }}"
+                               class="btn {{ query.filter.isCompleted ? 'btn-primary' : 'btn-outline-secondary' }}">Выполненные</a>
+                            <a href="{{ path('app_tasks', {page: result.currentPage, filter: 'not_completed', sort: query.sort.value, order: query.order.value}) }}"
+                               class="btn {{ query.filter.isNotCompleted ? 'btn-primary' : 'btn-outline-secondary' }}">Не выполненные</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="table-responsive">
+            <table class="table table-striped table-hover">
+                <thead>
+                <tr>
+                    <th>
+                        <a href="{{ path('app_tasks', {filter: query.filter.value, sort: 'name', order: (query.sort.isName and query.order.isAsc) ? 'desc' : 'asc', page: result.currentPage}) }}">
+                            Название
+                            {% if query.sort.isName %}
+                                {{ query.order.isAsc ? ' ▲' : ' ▼' }}
+                            {% endif %}
+                        </a>
+                    </th>
+                    <th>Статус</th>
+                    <th>
+                        <a href="{{ path('app_tasks', {filter: query.filter.value, sort: 'created_at', order: (query.sort.isCreatedAt and query.order.isAsc) ? 'desc' : 'asc', page: result.currentPage}) }}">
+                            Дата создания
+                            {% if query.sort.isCreatedAt %}
+                                {{ query.order.isAsc ? ' ▲' : ' ▼' }}
+                            {% endif %}
+                        </a>
+                    </th>
+                    <th class="text-end">Действия</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for task in result.items %}
+                    <tr>
+                        <td>{{ task.name }}</td>
+                        <td>
+                            {% if task.isCompleted %}
+                                <span class="badge bg-success">✅ Выполнена</span>
+                            {% else %}
+                                <span class="badge bg-secondary">❌ Не выполнена</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ task.createdAt ? task.createdAt|date('d.m.Y H:i') : '' }}</td>
+                        <td class="text-end">
+                            <a href="{{ path('app_task_edit', {'id': task.id}) }}" class="btn btn-sm btn-outline-primary me-1">✏️ Редактировать</a>
+                            <form method="post" action="{{ path('app_task_delete', {'id': task.id}) }}" onsubmit="return confirm('Удалить задачу?');" style="display: inline-block;">
+                                <input type="hidden" name="_token" value="{{ csrf_token('delete' ~ task.id) }}">
+                                <button class="btn btn-sm btn-outline-danger">🗑️ Удалить</button>
+                            </form>
+                        </td>
+                    </tr>
+                {% else %}
+                    <tr>
+                        <td colspan="4" class="text-center">
+                            📭 Нет задач. Самое время создать первую!
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        {# Пагинация #}
+        {% if result.totalPages > 1 %}
+            <nav aria-label="Page navigation" class="mt-4">
+                <ul class="pagination justify-content-center">
+                    {# Previous page #}
+                    {% if result.currentPage > 1 %}
+                        <li class="page-item">
+                            <a class="page-link" href="{{ path('app_tasks', {page: result.currentPage - 1, filter: query.filter.value, sort: query.sort.value, order: query.order.value}) }}">
+                                &laquo; Назад
+                            </a>
+                        </li>
+                    {% else %}
+                        <li class="page-item disabled">
+                            <span class="page-link">&laquo; Назад</span>
+                        </li>
+                    {% endif %}
+
+                    {# Страницы #}
+                    {% set startPage = max(1, result.currentPage - 2) %}
+                    {% set endPage = min(result.totalPages, result.currentPage + 2) %}
+
+                    {% if startPage > 1 %}
+                        <li class="page-item">
+                            <a class="page-link" href="{{ path('app_tasks', {page: 1, filter: query.filter.value, sort: query.sort.value, order: query.order.value}) }}">1</a>
+                        </li>
+                        {% if startPage > 2 %}
+                            <li class="page-item disabled"><span class="page-link">...</span></li>
+                        {% endif %}
+                    {% endif %}
+
+                    {% for pageNum in startPage..endPage %}
+                        <li class="page-item {{ pageNum == result.currentPage ? 'active' : '' }}">
+                            <a class="page-link" href="{{ path('app_tasks', {page: pageNum, filter: query.filter.value, sort: query.sort.value, order: query.order.value}) }}">{{ pageNum }}</a>
+                        </li>
+                    {% endfor %}
+
+                    {% if endPage < result.totalPages %}
+                        {% if endPage < result.totalPages - 1 %}
+                            <li class="page-item disabled"><span class="page-link">...</span></li>
+                        {% endif %}
+                        <li class="page-item">
+                            <a class="page-link" href="{{ path('app_tasks', {page: result.totalPages, filter: query.filter.value, sort: query.sort.value, order: query.order.value}) }}">{{ result.totalPages }}</a>
+                        </li>
+                    {% endif %}
+
+                    {# Next page #}
+                    {% if result.currentPage < result.totalPages %}
+                        <li class="page-item">
+                            <a class="page-link" href="{{ path('app_tasks', {page: result.currentPage + 1, filter: query.filter.value, sort: query.sort.value, order: query.order.value}) }}">
+                                Вперёд &raquo;
+                            </a>
+                        </li>
+                    {% else %}
+                        <li class="page-item disabled">
+                            <span class="page-link">Вперёд &raquo;</span>
+                        </li>
+                    {% endif %}
+                </ul>
+            </nav>
+        {% endif %}
+    </div>
+{% endblock %}
+=== templates/task/show.html.twig ===
+{% extends 'base.html.twig' %}
+
+{% block title %}Task{% endblock %}
+
+{% block body %}
+<div class="container mt-4">
+    <h1>Task</h1>
+
+    <table class="table">
+        <tbody>
+            <tr>
+                <th>Id</th>
+                <td>{{ task.id }}</td>
+            </tr>
+            <tr>
+                <th>Name</th>
+                <td>{{ task.name }}</td>
+            </tr>
+            <tr>
+                <th>Is_completed</th>
+                <td>{{ task.isCompleted ? 'Yes' : 'No' }}</td>
+            </tr>
+            <tr>
+                <th>Created_at</th>
+                <td>{{ task.createdAt ? task.createdAt|date('Y-m-d H:i:s') : '' }}</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <a href="{{ path('app_tasks') }}">back to list</a>
+
+    <a href="{{ path('app_task_edit', {'id': task.id}) }}">edit</a>
+</div>
+{% endblock %}
+=== templates/task/edit.html.twig ===
+{% extends 'base.html.twig' %}
+
+{% block title %}Edit Task{% endblock %}
+
+{% block body %}
+<div class="container mt-4">
+    <h1>Edit Task</h1>
+
+    {{ include('task/_form.html.twig', {'button_label': 'Update'}) }}
+
+    <a href="{{ path('app_tasks') }}">back to list</a>
+</div>
+{% endblock %}
+=== templates/task/_form.html.twig ===
+{{ form_start(form) }}
+    {{ form_widget(form) }}
+    <button class="btn btn-sm btn-outline-primary">{{ button_label|default('Save') }}</button>
+{{ form_end(form) }}

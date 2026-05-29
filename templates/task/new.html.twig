@@ -1,0 +1,13 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}New Task{% endblock %}
+
+{% block body %}
+<div class="container mt-4">
+    <h1>Create new Task</h1>
+
+    {{ include('task/_form.html.twig') }}
+
+    <a href="{{ path('app_tasks') }}">back to list</a>
+</div>
+{% endblock %}

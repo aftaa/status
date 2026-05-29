@@ -30,6 +30,20 @@ services:
             retries: 5
             start_period: 1s
 
+    redis:
+        image: redis:8.6-alpine3.23
+        ports:
+            - "8005:6379"
+        restart: always
+        volumes:
+            - ./docker/redis/data:/data
+        command: redis-server --appendonly yes
+        healthcheck:
+            test: ["CMD", "redis-cli", "ping"]
+            timeout: 10s
+            retries: 5
+            start_period: 5s
+
     php:
         build: ./docker/php
         volumes:
@@ -37,4 +51,6 @@ services:
         restart: always
         depends_on:
             mysql:
+                condition: service_healthy
+            redis:
                 condition: service_healthy
