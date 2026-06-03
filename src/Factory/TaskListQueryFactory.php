@@ -18,9 +18,9 @@ final class TaskListQueryFactory
     public function fromRequest(Request $request): TaskListQuery
     {
         return new TaskListQuery(
-            sort:   TaskSort::tryFrom($request->query->get('sort', TaskSort::DEFAULT)),
-            order:  TaskOrder::tryFrom($request->query->get('order', TaskOrder::DEFAULT)),
-            filter: TaskFilter::tryFrom($request->query->get('filter', TaskFilter::DEFAULT)),
+            sort:   TaskSort::tryFrom($request->query->get('sort', TaskSort::DEFAULT->value)),
+            order:  TaskOrder::tryFrom($request->query->get('order', TaskOrder::DEFAULT->value)),
+            filter: TaskFilter::tryFrom($request->query->get('filter', TaskFilter::DEFAULT->value)),
             page:   new Page($request->query->get('page', self::PAGE)),
             limit:  new Limit($request->query->get('limit', self::LIMIT)),
         );

@@ -2,7 +2,17 @@
 
 namespace App\Tests\Controller;
 
+use App\Dto\TaskListQuery;
+use App\Entity\Task;
+use App\Enum\TaskFilter;
+use App\Enum\TaskOrder;
+use App\Enum\TaskSort;
+use App\Enum\TaskStatus;
+use App\Repository\UserRepository;
+use App\ValueObject\Pagination\Limit;
+use App\ValueObject\Pagination\Page;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
+use Symfony\Contracts\Cache\TagAwareCacheInterface;
 
 class TaskControllerTest extends WebTestCase
 {
@@ -13,39 +23,41 @@ class TaskControllerTest extends WebTestCase
         ]);
         $client->request('GET', '/task/');
 
-        $this->assertResponseIsSuccessful();
-        $this->assertSelectorTextContains('h1', 'Список задач');
+        $this->assertResponseRedirects('/login');
     }
 
-    public function testNewTaskPageOpens(): void
+    public function testNewTaskPageRequiresLogin(): void
     {
         $client = static::createClient([], [
             'HTTP_HOST' => 'localhost:8003',
         ]);
         $client->request('GET', '/task/new');
 
-        $this->assertResponseIsSuccessful();
-        $this->assertSelectorExists('form');
+        $this->assertResponseRedirects('/login');
     }
 
-    public function testEditTaskPageOpens(): void
+    public function testTasksPageWorksWhenLoggedIn(): void
     {
-        $client = static::createClient([], [
-            'HTTP_HOST' => 'localhost:8003',
-        ]);
-        $client->request('GET', '/task/1/edit');
+        $client = static::createClient();
 
-        // Страница может вернуть 404 если задачи нет, но это нормально для теста
-        $this->assertResponseStatusCodeSame(404);
+        $userRepository = static::getContainer()->get(UserRepository::class);
+        $testUser = $userRepository->findOneByEmail('test@example.com');
+
+        if (!$testUser) {
+            $this->markTestSkipped('No test user found. Run seeds first.');
+        }
+
+        $client->loginUser($testUser);
+        $client->request('GET', '/task/');
+        $this->assertResponseIsSuccessful();
+        $this->assertSelectorTextContains('h1', 'Список задач');
     }
 
     public function testCacheIsInvalidatedOnTaskCreation(): void
     {
-        // Инициализируем тестовое окружение Symfony
         self::bootKernel();
         $container = static::getContainer();
 
-        // 1. Получаем необходимые сервисы напрямую из DI-контейнера
         /** @var TagAwareCacheInterface $cache */
         $cache = $container->get('cache.app.taggable');
 
@@ -55,34 +67,26 @@ class TaskControllerTest extends WebTestCase
         /** @var \Doctrine\ORM\EntityManagerInterface $entityManager */
         $entityManager = $container->get(\Doctrine\ORM\EntityManagerInterface::class);
 
-        // 2. Явно прогреваем кэш с помощью нашего декоратора
-        $query = new \App\Dto\TaskListQuery('name', 'desc', 'all');
-        $cachedLister->getFilteredAndSortedTasks($query, 1, 10);
+        $query = new TaskListQuery(
+            sort: TaskSort::NAME,
+            order: TaskOrder::ASC,
+            filter: TaskFilter::ALL,
+            page: new Page(1),
+            limit: new Limit(10),
+        );
+        $cachedLister->getFilteredAndSortedTasks($query);
 
-        // Ключ кэша, который сформировался внутри декоратора
-        $cacheKey = 'tasks_list_all_name_desc_p1_l10';
+        $cacheKey = 'tasks_list_all_name_asc_p1_l10';
+        $this->assertTrue($cache->getItem($cacheKey)->isHit(), 'Кэш прогрет');
 
-        // Проверяем, что в кэше железно появился ключ
-        $this->assertTrue($cache->getItem($cacheKey)->isHit(), 'Кэш успешно прогрет');
-
-        // 3. Прямая эмуляция действий контроллера: создаем и сохраняем сущность
-        $task = new \App\Entity\Task();
+        $task = new Task();
         $task->setName('Тестовая задача из PHPUnit');
-
-        // Добавьте эту строчку (или проверьте точное имя метода в вашей сущности Task):
-        $task->setIsCompleted(false);
+        $task->setStatus(TaskStatus::NOT_COMPLETED);
 
         $entityManager->persist($task);
-
-        // Главный триггер: flush() должен запустить наш TaskCacheListener
         $entityManager->flush();
 
-        // 4. ПРОВЕРКА ИНВАЛИДАЦИИ: Проверяем, стёрся ли ключ
         $cacheItemAfter = $cache->getItem($cacheKey);
-
-        $this->assertFalse(
-            $cacheItemAfter->isHit(),
-            'Ура! Кэш был успешно сброшен листенером после вызова $entityManager->flush()!'
-        );
+        $this->assertFalse($cacheItemAfter->isHit(), 'Кэш сброшен листенером');
     }
 }
