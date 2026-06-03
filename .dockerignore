@@ -17,8 +17,8 @@ docker/nginx/logs
 docker-compose.override.yml
 
 # Зависимости (ставятся внутри контейнера)
-vendor
-node_modules
+#vendor
+#node_modules
 
 # Документация
 *.md
