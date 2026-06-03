@@ -1,0 +1,36 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}История задачи #{{ task.id }}{% endblock %}
+
+{% block body %}
+    <div class="container mt-4">
+        <h1>История задачи #{{ task.id }}: {{ task.name }}</h1>
+
+        <table class="table table-striped">
+            <thead>
+            <tr>
+                <th>Дата</th>
+                <th>Действие</th>
+                <th>Старые данные</th>
+                <th>Новые данные</th>
+            </tr>
+            </thead>
+            <tbody>
+            {% for event in events %}
+                <tr>
+                    <td>{{ event.createdAt|date('d.m.Y H:i:s') }}</td>
+                    <td>{{ event.action }}</td>
+                    <td>{{ event.oldData | json_encode }}</td>
+                    <td>{{ event.newData | json_encode }}</td>
+                </tr>
+            {% else %}
+                <tr>
+                    <td colspan="4">Нет событий</td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+
+        <a href="{{ path('app_tasks') }}">← Назад к списку</a>
+    </div>
+{% endblock %}

@@ -3,15 +3,15 @@
 
 namespace App\Specification;
 
+use App\Enum\TaskStatus;
 use Doctrine\ORM\QueryBuilder;
 
 class NotCompletedTasksSpecification implements SpecificationInterface
 {
     public function apply(QueryBuilder $qb): void
     {
-        $qb->andWhere('t.is_completed = :is_completed')
-            ->setParameter('is_completed', false);
-    }
+        $qb->andWhere('t.status = :status')
+            ->setParameter('status', TaskStatus::NOT_COMPLETED);    }
 
     public function getKey(): string
     {

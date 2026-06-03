@@ -1,0 +1,1424 @@
+=== src/Controller/TaskController.php ===
+<?php
+
+namespace App\Controller;
+
+use App\Dto\TaskDto;
+use App\Entity\Task;
+use App\Enum\TaskOrder;
+use App\Factory\TaskEventFactory;
+use App\Factory\TaskFactory;
+use App\Factory\TaskListQueryFactory;
+use App\Form\TaskType;
+use App\Service\TaskEventLogger;
+use App\Service\TaskListerInterface;
+use Doctrine\ORM\EntityManagerInterface;
+use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
+use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\Routing\Attribute\Route;
+
+#[Route('/task')]
+final class TaskController extends AbstractController
+{
+    public function __construct(
+        private readonly EntityManagerInterface $entityManager,
+        private readonly TaskListerInterface    $taskLister,
+        private readonly TaskListQueryFactory   $queryFactory,
+        private readonly TaskFactory            $taskFactory,
+        private readonly TaskEventLogger        $taskEventLogger,
+        private readonly TaskEventFactory       $taskEventFactory,
+    ) {
+    }
+
+    #[Route('/', name: 'app_tasks')]
+    public function index(Request $request): Response
+    {
+        $query = $this->queryFactory->fromRequest($request);
+
+        $result = $this->taskLister->getFilteredAndSortedTasks($query);
+
+        return $this->render('task/index.html.twig', [
+            'result' => $result,
+            'query' => $query,
+            'taskOrderEnum' => TaskOrder::cases(),
+        ]);
+    }
+
+    #[Route('/{id}', name: 'app_task_show', requirements: ['id' => '\d+'], methods: ['GET'])]
+    public function show(Task $task): Response
+    {
+        return $this->render('task/show.html.twig', [
+            'task' => $task,
+        ]);
+    }
+
+    #[Route('/{id}/edit', name: 'app_task_edit', methods: ['GET', 'POST'])]
+    public function edit(Request $request, Task $task): Response
+    {
+        $taskDto = new TaskDto(
+            name: $task->getName() ?? '',
+            status: $task->getStatus(),
+        );
+
+
+        $form = $this->createForm(TaskType::class, $taskDto);
+        $form->handleRequest($request);
+
+        if ($form->isSubmitted() && $form->isValid()) {
+            $oldData = $task->toArray();
+
+            $this->taskFactory->updateFromDto($task, $taskDto);
+            $this->entityManager->flush();
+
+            $this->taskEventLogger->log(
+                $this->taskEventFactory->createFromTask('edit', $task, $taskDto)
+            );
+
+            return $this->redirectToRoute('app_tasks', [], Response::HTTP_SEE_OTHER);
+        }
+
+        return $this->render('task/edit.html.twig', [
+            'task' => $task,
+            'form' => $form,
+        ]);
+    }
+
+    #[Route('/{id}', name: 'app_task_delete', requirements: ['id' => '\d+'], methods: ['POST'])]
+    public function delete(Request $request, Task $task): Response
+    {
+        if ($this->isCsrfTokenValid('delete' . $task->getId(), $request->getPayload()->getString('_token'))) {
+            $this->taskEventLogger->log(
+                $this->taskEventFactory->createFromTask('delete', $task)
+            );
+
+            $this->entityManager->remove($task);
+            $this->entityManager->flush();
+        }
+
+        return $this->redirectToRoute('app_tasks', [], Response::HTTP_SEE_OTHER);
+    }
+
+    #[Route('/new', name: 'app_task_new', methods: ['GET', 'POST'])]
+    public function new(Request $request): Response
+    {
+        $taskDto = new TaskDto();
+
+        $form = $this->createForm(TaskType::class, $taskDto);
+        $form->handleRequest($request);
+
+        if ($form->isSubmitted() && $form->isValid()) {
+            $task = $this->taskFactory->createFromDto($taskDto);
+            $this->entityManager->persist($task);
+            $this->entityManager->flush();
+
+            $this->taskEventLogger->log(
+                $this->taskEventFactory->createFromTask('create', $task)
+            );
+
+            return $this->redirectToRoute('app_tasks', [], Response::HTTP_SEE_OTHER);
+        }
+
+        return $this->render('task/new.html.twig', [
+            'form' => $form,
+        ]);
+    }
+
+    #[Route('/{id}/history', name: 'app_task_history', methods: ['GET'])]
+    public function history(Task $task): Response
+    {
+        $events = $this->logger->findByTaskId($task->getId());
+
+        return $this->render('task/history.html.twig', [
+            'task' => $task,
+            'events' => $events,
+        ]);
+    }
+}
+
+=== src/EventListener/TaskCacheListener.php ===
+<?php
+
+// src/EventListener/TaskCacheListener.php
+namespace App\EventListener;
+
+use App\Entity\Task;
+use Doctrine\ORM\Event\PostPersistEventArgs;
+use Doctrine\ORM\Event\PostUpdateEventArgs;
+use Doctrine\ORM\Event\PostRemoveEventArgs;
+use Symfony\Contracts\Cache\TagAwareCacheInterface;
+
+class TaskCacheListener
+{
+    public function __construct(
+        private TagAwareCacheInterface $cache
+    ) {}
+
+    public function postPersist(PostPersistEventArgs $args): void
+    {
+        $this->invalidate($args->getObject());
+    }
+
+    public function postUpdate(PostUpdateEventArgs $args): void
+    {
+        $this->invalidate($args->getObject());
+    }
+
+    public function postRemove(PostRemoveEventArgs $args): void
+    {
+        $this->invalidate($args->getObject());
+    }
+
+    private function invalidate(object $entity): void
+    {
+        if ($entity instanceof Task) {
+            $this->cache->invalidateTags(['tasks_collection']);
+        }
+    }
+}
+
+=== src/Factory/TaskEventFactory.php ===
+<?php
+
+namespace App\Factory;
+
+use App\Dto\TaskDto;
+use App\Dto\TaskEvent;
+use App\Entity\Task;
+
+final class TaskEventFactory
+{
+    public function createFromTask(string $action, Task $task, ?TaskDto $newData = null): TaskEvent
+    {
+        $oldData = [
+            'name' => $task->getName(),
+            'status' => $task->getStatus()->value,
+            'created_at' => $task->getCreatedAt()?->format('c'),
+        ];
+
+        return new TaskEvent(
+            taskId: $task->getId() ?? 0,
+            action: $action,
+            oldData: $oldData,
+            newData: $newData ? $this->dtoToArray($newData) : $oldData,
+        );
+    }
+
+    private function dtoToArray(TaskDto $dto): array
+    {
+        return [
+            'name' => $dto->name,
+            'status' => $dto->status->value,
+        ];
+    }
+}
+
+=== src/Factory/SpecificationFactory.php ===
+<?php
+
+namespace App\Factory;
+
+use App\Specification\SpecificationInterface;
+use Symfony\Component\DependencyInjection\Attribute\TaggedIterator;
+
+class SpecificationFactory
+{
+    private array $specifications = [];
+
+    public function __construct(
+        #[TaggedIterator('app.task_specification')] iterable $specifications
+    ) {
+        foreach ($specifications as $specification) {
+            $this->specifications[$specification->getKey()] = $specification;
+        }
+    }
+
+    public function getSpecification(?string $key): ?SpecificationInterface
+    {
+        if ($key === null || $key === 'all') {
+            return null;
+        }
+
+        return $this->specifications[$key] ?? null;
+    }
+}
+
+=== src/Factory/SortingStrategyFactory.php ===
+<?php
+
+namespace App\Factory;
+
+use App\Strategy\SortingStrategyInterface;
+
+class SortingStrategyFactory
+{
+    /**
+     * @var SortingStrategyInterface[]
+     */
+    private array $strategies = [];
+
+    public function __construct(iterable $strategies)
+    {
+        foreach ($strategies as $strategy) {
+            $this->strategies[$strategy->getKey()] = $strategy;
+        }
+    }
+
+    public function getStrategy(string $type): SortingStrategyInterface
+    {
+        return $this->strategies[$type] ?? $this->strategies['created_at'];
+    }
+}
+
+=== src/Factory/TaskListQueryFactory.php ===
+<?php
+
+namespace App\Factory;
+
+use App\Dto\TaskListQuery;
+use App\Enum\TaskFilter;
+use App\Enum\TaskOrder;
+use App\Enum\TaskSort;
+use App\ValueObject\Pagination\Limit;
+use App\ValueObject\Pagination\Page;
+use Symfony\Component\HttpFoundation\Request;
+
+final class TaskListQueryFactory
+{
+    final public const int PAGE = 1;
+    final public const int LIMIT = 20;
+
+    public function fromRequest(Request $request): TaskListQuery
+    {
+        return new TaskListQuery(
+            sort:   TaskSort::tryFrom($request->query->get('sort')) ?? TaskSort::DEFAULT,
+            order:  TaskOrder::tryFrom($request->query->get('order')) ?? TaskOrder::DEFAULT,
+            filter: TaskFilter::tryFrom($request->query->get('filter')) ?? TaskFilter::DEFAULT,
+            page:   new Page($request->query->get('page', self::PAGE)),
+            limit:  new Limit($request->query->get('limit', self::LIMIT)),
+        );
+    }
+}
+
+=== src/Factory/TaskFactory.php ===
+<?php
+
+namespace App\Factory;
+
+use App\Dto\TaskDto;
+use App\Entity\Task;
+
+final class TaskFactory
+{
+    public function createFromDto(TaskDto $dto): Task
+    {
+        $task = new Task();
+        $task->setName($dto->name);
+        $task->setStatus($dto->status);
+
+        return $task;
+    }
+
+    public function updateFromDto(Task $task, TaskDto $dto): void
+    {
+        $task->setName($dto->name);
+        $task->setStatus($dto->status);
+    }
+}
+
+=== src/Form/TaskType.php ===
+<?php
+
+namespace App\Form;
+
+use App\Dto\TaskDto;
+use App\Entity\Task;
+use App\Enum\TaskStatus;
+use Symfony\Component\Form\AbstractType;
+use Symfony\Component\Form\Extension\Core\Type\CheckboxType;
+use Symfony\Component\Form\Extension\Core\Type\EnumType;
+use Symfony\Component\Form\Extension\Core\Type\TextType;
+use Symfony\Component\Form\FormBuilderInterface;
+use Symfony\Component\OptionsResolver\OptionsResolver;
+
+class TaskType extends AbstractType
+{
+    public function buildForm(FormBuilderInterface $builder, array $options): void
+    {
+        $builder
+            ->add('name')
+            ->add('status', EnumType::class, ['class' => TaskStatus::class])
+//            ->add('is_completed', CheckboxType::class, [
+//                'label_attr' => ['class' => 'checkbox-switch'],
+//                'required' => false,
+//            ])
+//            ->add('created_at', null, [
+//                'widget' => 'single_text',
+//            ])
+            ->add('name', TextType::class, [
+                'label' => 'Название задачи',
+                'attr' => ['placeholder' => 'Введите название'],
+            ])
+            ->add('status', EnumType::class, [
+                'class' => TaskStatus::class,
+                'label' => 'Статус',
+            ]);
+        ;
+    }
+
+    public function configureOptions(OptionsResolver $resolver): void
+    {
+        $resolver->setDefaults([
+            //'data_class' => Task::class,
+            'data_class' => TaskDto::class,
+        ]);
+    }
+}
+
+=== src/Service/TaskEventLogger.php ===
+<?php
+
+namespace App\Service;
+
+use App\Dto\TaskEvent;
+use MongoDB\Collection;
+use MongoDB\Client;
+
+final class TaskEventLogger
+{
+    private Collection $collection;
+
+    public function __construct(Client $client)
+    {
+        $this->collection = $client->selectCollection(
+            $_ENV['MONGODB_DB'],
+            'task_events'
+        );
+    }
+
+    public function log(TaskEvent $event): void
+    {
+        $this->collection->insertOne([
+            'taskId'    => $event->taskId,
+            'action'    => $event->action,
+            'oldData'   => $event->oldData,
+            'newData'   => $event->newData,
+            'createdAt' => $event->createdAt->format('c'),
+        ]);
+    }
+
+    public function findByTaskId(int $taskId): array
+    {
+        return $this->collection->find(
+            ['taskId' => $taskId],
+            ['sort' => ['createdAt' => -1]]
+        )->toArray();
+    }
+}
+
+=== src/Service/CachedTaskLister.php ===
+<?php
+
+namespace App\Service;
+
+use App\Dto\PaginatedResult;
+use App\Dto\TaskListQuery;
+use App\Service\TaskListerInterface;
+use Psr\Cache\InvalidArgumentException;
+use Symfony\Contracts\Cache\CacheInterface;
+use Symfony\Contracts\Cache\ItemInterface;
+
+readonly class CachedTaskLister implements TaskListerInterface
+{
+    public function __construct(
+        private TaskListerInterface $delegate,
+        private CacheInterface      $cache,
+    )
+    {
+    }
+
+    /**
+     * @throws InvalidArgumentException
+     */
+    public function getFilteredAndSortedTasks(TaskListQuery $query): PaginatedResult
+    {
+        $cacheKey = sprintf(
+            'tasks_list_%s_%s_%s_p%s_l%s',
+            $query->filter->value,
+            $query->sort->value,
+            $query->order->value,
+            $query->page,
+            $query->limit,
+        );
+
+        return $this->cache->get($cacheKey, function (ItemInterface $item) use ($query) {
+            $item->expiresAfter(600);
+            $item->tag(['tasks_collection']);
+
+            return $this->delegate->getFilteredAndSortedTasks($query);
+        });
+    }
+}
+
+=== src/Service/DoctrinePaginator.php ===
+<?php
+
+namespace App\Service;
+
+use App\ValueObject\Pagination\Limit;
+use App\ValueObject\Pagination\Page;
+use Doctrine\ORM\QueryBuilder;
+use App\Dto\PaginatedResult;
+
+class DoctrinePaginator
+{
+    public function paginate(QueryBuilder $qb, Page $page, Limit $limit): PaginatedResult
+    {
+        $total = (clone $qb)->select('COUNT(t.id)')
+            ->getQuery()
+            ->getSingleScalarResult();
+
+        $qb->setFirstResult(($page->number - 1) * $limit->value)
+            ->setMaxResults($limit->value);
+
+        return new PaginatedResult(
+            items: $qb->getQuery()->getResult(),
+            currentPage: $page->number,
+            totalItems: (int) $total,
+            itemsPerPage: $limit->value,
+        );
+    }
+}
+
+=== src/Service/TaskLister.php ===
+<?php
+
+namespace App\Service;
+
+use App\Dto\PaginatedResult;
+use App\Dto\TaskListQuery;
+use App\Factory\SortingStrategyFactory;
+use App\Factory\SpecificationFactory;
+use App\Repository\TaskRepository;
+
+readonly class TaskLister implements TaskListerInterface
+{
+    public function __construct(
+        private TaskRepository         $taskRepository,
+        private SortingStrategyFactory $sortingStrategyFactory,
+        private SpecificationFactory   $specificationFactory,
+        private DoctrinePaginator      $paginator,
+    )
+    {
+    }
+
+    public function getFilteredAndSortedTasks(TaskListQuery $query): PaginatedResult
+    {
+        $qb = $this->taskRepository->createQueryBuilder('t');
+
+        $specification = $this->specificationFactory->getSpecification($query->filter->value);
+        $specification?->apply($qb);
+
+        $sortingStrategy = $this->sortingStrategyFactory->getStrategy($query->sort->value);
+        $sortingStrategy?->apply($qb, $query->order->value);
+
+        return $this->paginator->paginate($qb, $query->page, $query->limit);
+    }
+}
+
+=== src/Service/TaskListerInterface.php ===
+<?php
+
+namespace App\Service;
+
+use App\Dto\PaginatedResult;
+use App\Dto\TaskListQuery;
+
+interface TaskListerInterface
+{
+    public function getFilteredAndSortedTasks(TaskListQuery $query): PaginatedResult;
+}
+
+=== src/Dto/TaskListQuery.php ===
+<?php
+
+namespace App\Dto;
+
+use App\Enum\TaskFilter;
+use App\Enum\TaskOrder;
+use App\Enum\TaskSort;
+use App\ValueObject\Pagination\Limit;
+use App\ValueObject\Pagination\Page;
+
+readonly class TaskListQuery
+{
+    public function __construct(
+        public TaskSort   $sort = TaskSort::CREATED_AT,
+        public TaskOrder  $order = TaskOrder::ASC,
+        public TaskFilter $filter = TaskFilter::ALL,
+        public Page       $page = new Page(1),
+        public Limit      $limit = new Limit(10),
+    ) {}
+}
+
+=== src/Dto/TaskListResult.php ===
+<?php
+
+namespace App\Dto;
+
+readonly class TaskListResult
+{
+    public function __construct(
+        public array         $tasks,
+        public TaskListQuery $query,
+    )
+    {
+    }
+}
+
+=== src/Dto/PaginatedResult.php ===
+<?php
+
+namespace App\Dto;
+
+class PaginatedResult
+{
+    public function __construct(
+        public readonly array $items,
+        public readonly int $currentPage,
+        public readonly int $totalItems,
+        public readonly int $itemsPerPage,
+    ) {}
+
+    public function getTotalPages(): int
+    {
+        return (int) ceil($this->totalItems / $this->itemsPerPage);
+    }
+}
+
+=== src/Dto/TaskEvent.php ===
+<?php
+
+namespace App\Dto;
+
+readonly class TaskEvent
+{
+    public function __construct(
+        public int              $taskId,
+        public string           $action,
+        public array            $oldData,
+        public array            $newData,
+        public \DateTimeImmutable $createdAt = new \DateTimeImmutable(),
+    ) {}
+}
+
+=== src/Dto/TaskDto.php ===
+<?php
+
+namespace App\Dto;
+
+use App\Enum\TaskStatus;
+use Symfony\Component\Validator\Constraints as Assert;
+
+final class TaskDto
+{
+    public function __construct(
+        #[Assert\NotBlank(message: 'TaskDto.name.not_blank')]
+        #[Assert\Length(min: 3, max: 255, minMessage: 'TaskDto.name.length', maxMessage: 'TaskDto.name.length')]
+        public string     $name = '',
+
+        public TaskStatus $status = TaskStatus::NOT_COMPLETED,
+    )
+    {
+    }
+
+    public function toArray(): array
+    {
+        return [
+            'name' => $this->name,
+            'status' => $this->status->value,
+        ];
+    }
+}
+
+=== src/Entity/Task.php ===
+<?php
+
+namespace App\Entity;
+
+use App\Enum\TaskStatus;
+use App\Repository\TaskRepository;
+use Doctrine\ORM\Mapping as ORM;
+
+#[ORM\Entity(repositoryClass: TaskRepository::class)]
+#[ORM\HasLifecycleCallbacks]
+class Task
+{
+    #[ORM\Id]
+    #[ORM\GeneratedValue]
+    #[ORM\Column]
+    private ?int $id = null;
+
+    #[ORM\Column(length: 255)]
+    private ?string $name = null;
+
+    #[ORM\Column(enumType: TaskStatus::class)]
+    private TaskStatus $status = TaskStatus::DEFAULT;
+
+    #[ORM\Column(type: 'datetime_immutable', updatable: false)]
+    private ?\DateTimeImmutable $created_at = null;
+
+    public function getId(): ?int
+    {
+        return $this->id;
+    }
+
+    public function getName(): ?string
+    {
+        return $this->name;
+    }
+
+    public function setName(string $name): static
+    {
+        $this->name = $name;
+
+        return $this;
+    }
+
+    public function isCompleted(): ?bool
+    {
+        return $this->status === TaskStatus::COMPLETED;
+    }
+
+    public function getCreatedAt(): ?\DateTimeImmutable
+    {
+        return $this->created_at;
+    }
+
+    public function setCreatedAt(\DateTimeImmutable $created_at): static
+    {
+        $this->created_at = $created_at;
+
+        return $this;
+    }
+
+    #[ORM\PrePersist]
+    public function setCreatedAtValue(): void
+    {
+        $this->created_at = new \DateTimeImmutable();
+    }
+
+    public function getStatus(): TaskStatus
+    {
+        return $this->status;
+    }
+
+    public function setStatus(TaskStatus $status): static
+    {
+        $this->status = $status;
+        return $this;
+    }
+
+    public function toArray(): array
+    {
+        return [
+            'id' => $this->id,
+            'name' => $this->name,
+            'status' => $this->status->value,
+            'created_at' => $this->created_at?->format('c'),
+        ];
+    }
+}
+
+// symfony console dbal:run-sql 'SELECT * FROM task'
+
+=== src/Specification/SpecificationInterface.php ===
+<?php
+// src/Specification/SpecificationInterface.php
+
+namespace App\Specification;
+
+use Doctrine\ORM\QueryBuilder;
+
+interface SpecificationInterface
+{
+    public function apply(QueryBuilder $qb): void;
+    public function getKey(): string; // completed, not_completed, etc.
+}
+
+=== src/Specification/NotCompletedTasksSpecification.php ===
+<?php
+// src/Specification/NotCompletedTasksSpecification.php
+
+namespace App\Specification;
+
+use App\Enum\TaskStatus;
+use Doctrine\ORM\QueryBuilder;
+
+class NotCompletedTasksSpecification implements SpecificationInterface
+{
+    public function apply(QueryBuilder $qb): void
+    {
+        $qb->andWhere('t.status = :status')
+            ->setParameter('status', TaskStatus::NOT_COMPLETED);    }
+
+    public function getKey(): string
+    {
+        return 'not_completed';
+    }
+}
+
+=== src/Specification/CompletedTasksSpecification.php ===
+<?php
+// src/Specification/CompletedTasksSpecification.php
+
+namespace App\Specification;
+
+use App\Enum\TaskStatus;
+use Doctrine\ORM\QueryBuilder;
+
+class CompletedTasksSpecification implements SpecificationInterface
+{
+    public function apply(QueryBuilder $qb): void
+    {
+        $qb->andWhere('t.status = :status')
+            ->setParameter('status', TaskStatus::COMPLETED);
+    }
+
+    public function getKey(): string
+    {
+        return 'completed';
+    }
+}
+
+=== src/Strategy/SortByCreatedAtStrategy.php ===
+<?php
+// src/Strategy/SortByCreatedAtStrategy.php
+
+namespace App\Strategy;
+
+use Doctrine\ORM\QueryBuilder;
+
+class SortByCreatedAtStrategy implements SortingStrategyInterface
+{
+    public function apply(QueryBuilder $qb, string $order): void
+    {
+        $qb->orderBy('t.created_at', $order);
+    }
+
+    public function getKey(): string
+    {
+        return 'created_at';
+    }
+}
+
+=== src/Strategy/SortByIdStrategy.php ===
+<?php
+
+namespace App\Strategy;
+
+use Doctrine\ORM\QueryBuilder;
+
+class SortByIdStrategy implements SortingStrategyInterface
+{
+    public function apply(QueryBuilder $qb, string $order): void
+    {
+        $qb->orderBy('t.id', $order);
+    }
+
+    public function getKey(): string
+    {
+        return 'id';
+    }
+}
+
+=== src/Strategy/SortingStrategyInterface.php ===
+<?php
+// src/Strategy/SortingStrategyInterface.php
+
+namespace App\Strategy;
+
+use Doctrine\ORM\QueryBuilder;
+
+interface SortingStrategyInterface
+{
+    public function apply(QueryBuilder $qb, string $order): void;
+    public function getKey(): string;
+}
+
+=== src/Strategy/SortByNameStrategy.php ===
+<?php
+// src/Strategy/SortByNameStrategy.php
+
+namespace App\Strategy;
+
+use Doctrine\ORM\QueryBuilder;
+
+class SortByNameStrategy implements SortingStrategyInterface
+{
+    public function apply(QueryBuilder $qb, string $order): void
+    {
+        $qb->orderBy('t.name', $order);
+    }
+
+    public function getKey(): string
+    {
+        return 'name';
+    }
+}
+
+=== src/Enum/TaskFilter.php ===
+<?php
+
+namespace App\Enum;
+
+enum TaskFilter: string
+{
+    case ALL = 'all';
+    case COMPLETED = 'completed';
+    case NOT_COMPLETED = 'not_completed';
+
+    public final const self DEFAULT = self::ALL;
+
+    public function getLabel(): string
+    {
+        return match ($this) {
+            self::ALL => 'Все',
+            self::COMPLETED => 'Выполненные',
+            self::NOT_COMPLETED => 'Невыполненные',
+        };
+    }
+
+    public function isAll(): bool
+    {
+        return $this === self::ALL;
+    }
+
+    public function isCompleted(): bool
+    {
+        return $this === self::COMPLETED;
+    }
+
+    public function isNotCompleted(): bool
+    {
+        return $this === self::NOT_COMPLETED;
+    }
+}
+
+=== src/Enum/TaskStatus.php ===
+<?php
+
+// src/Enum/TaskStatus.php
+namespace App\Enum;
+
+enum TaskStatus: string
+{
+    case COMPLETED = 'completed';
+    case NOT_COMPLETED = 'not_completed';
+
+    public final const self DEFAULT = self::NOT_COMPLETED;
+
+    public function getLabel(): string
+    {
+        return match($this) {
+            self::COMPLETED => '✅ Выполнена',
+            self::NOT_COMPLETED => '❌ Не выполнена',
+        };
+    }
+}
+
+=== src/Enum/TaskSort.php ===
+<?php
+
+namespace App\Enum;
+
+enum TaskSort: string
+{
+    case CREATED_AT = 'created_at';
+    case NAME = 'name';
+    case IS_COMPLETED = 'is_completed';
+    case ID = 'id';
+
+    public final const self DEFAULT = self::CREATED_AT;
+
+    public function getLabel(): string
+    {
+        return match ($this) {
+            self::CREATED_AT => 'По дате создания',
+            self::NAME => 'По названию',
+            self::IS_COMPLETED => 'По статусу',
+            self::ID => 'По ИД',
+        };
+    }
+
+    public function isCreatedAt(): bool
+    {
+        return $this === self::CREATED_AT;
+    }
+
+    public function isName(): bool
+    {
+        return $this === self::NAME;
+    }
+
+    public function isCompleted(): bool
+    {
+        return $this === self::IS_COMPLETED;
+    }
+
+    public function isId(): bool
+    {
+        return $this === self::ID;
+    }
+}
+
+=== src/Enum/TaskOrder.php ===
+<?php
+
+namespace App\Enum;
+
+enum TaskOrder: string
+{
+    case ASC = 'asc';
+    case DESC = 'desc';
+
+    final public const self DEFAULT = self::ASC;
+
+    public function getLabel(): string
+    {
+        return match ($this) {
+            self::ASC => 'По возрастанию',
+            self::DESC => 'По убыванию',
+        };
+    }
+
+    public function isAsc(): bool
+    {
+        return $this === self::ASC;
+    }
+
+    public function isDesc(): bool
+    {
+        return $this === self::DESC;
+    }
+
+    public function toggle(): self
+    {
+        return $this->isAsc() ? self::DESC : self::ASC;
+    }
+}
+
+=== src/ValueObject/Pagination/Page.php ===
+<?php
+
+namespace App\ValueObject\Pagination;
+
+class Page
+{
+    public private(set) int $number {
+        set (int $number) {
+            if ($number < 1) {
+                throw new \InvalidArgumentException('Page must be >= 1');
+            }
+            $this->number = $number;
+        }
+    }
+
+    public function __construct(int $number = 1)
+    {
+        $this->number = $number;
+    }
+
+    public function __toString(): string
+    {
+        return (string) $this->number;
+    }
+}
+
+=== src/ValueObject/Pagination/Limit.php ===
+<?php
+
+namespace App\ValueObject\Pagination;
+
+class Limit
+{
+    public private(set) int $value {
+        set (int $value) {
+            if ($value < 1 || $value > 100) {
+                throw new \InvalidArgumentException('Limit must be between 1 and 100');
+            }
+            $this->value = $value;
+        }
+    }
+
+    public function __construct(int $value = 10)
+    {
+        $this->value = $value;
+    }
+
+    public function __toString(): string
+    {
+        return (string) $this->value;
+    }
+}
+
+=== src/Repository/TaskRepository.php ===
+<?php
+
+namespace App\Repository;
+
+use App\Entity\Task;
+use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
+use Doctrine\Persistence\ManagerRegistry;
+
+/**
+ * @extends ServiceEntityRepository<Task>
+ */
+class TaskRepository extends ServiceEntityRepository
+{
+    public function __construct(ManagerRegistry $registry)
+    {
+        parent::__construct($registry, Task::class);
+    }
+
+    //    /**
+    //     * @return Task[] Returns an array of Task objects
+    //     */
+    //    public function findByExampleField($value): array
+    //    {
+    //        return $this->createQueryBuilder('t')
+    //            ->andWhere('t.exampleField = :val')
+    //            ->setParameter('val', $value)
+    //            ->orderBy('t.id', 'ASC')
+    //            ->setMaxResults(10)
+    //            ->getQuery()
+    //            ->getResult()
+    //        ;
+    //    }
+
+    //    public function findOneBySomeField($value): ?Task
+    //    {
+    //        return $this->createQueryBuilder('t')
+    //            ->andWhere('t.exampleField = :val')
+    //            ->setParameter('val', $value)
+    //            ->getQuery()
+    //            ->getOneOrNullResult()
+    //        ;
+    //    }
+}
+
+=== src/Kernel.php ===
+<?php
+
+namespace App;
+
+use Symfony\Bundle\FrameworkBundle\Kernel\MicroKernelTrait;
+use Symfony\Component\HttpKernel\Kernel as BaseKernel;
+
+class Kernel extends BaseKernel
+{
+    use MicroKernelTrait;
+}
+
+=== templates/base.html.twig ===
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>{% block title %}Welcome!{% endblock %}</title>
+        <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 128 128%22><text y=%221.2em%22 font-size=%2296%22>⚫️</text><text y=%221.3em%22 x=%220.2em%22 font-size=%2276%22 fill=%22%23fff%22>sf</text></svg>">
+        {% block stylesheets %}
+            <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5/dist/css/bootstrap.min.css">
+        {% endblock %}
+
+        {% block javascripts %}
+            {% block importmap %}{{ importmap('app') }}{% endblock %}
+            <script src="https://cdn.jsdelivr.net/npm/bootstrap@5/dist/js/bootstrap.bundle.min.js" defer></script>
+        {% endblock %}
+
+        {% set frankenphpHotReload = app.request.server.get('FRANKENPHP_HOT_RELOAD') %}
+        {% if frankenphpHotReload %}
+        <meta name="frankenphp-hot-reload:url" content="{{ frankenphpHotReload }}">
+        <script src="https://cdn.jsdelivr.net/npm/idiomorph"></script>
+        <script src="https://cdn.jsdelivr.net/npm/frankenphp-hot-reload/+esm" type="module"></script>
+        {% endif %}
+    </head>
+    <body>
+        {% block body %}{% endblock %}
+    </body>
+</html>
+
+=== templates/task/new.html.twig ===
+{% extends 'base.html.twig' %}
+
+{% block title %}New Task{% endblock %}
+
+{% block body %}
+<div class="container mt-4">
+    <h1>Create new Task</h1>
+
+    {{ include('task/_form.html.twig') }}
+
+    <a href="{{ path('app_tasks') }}">back to list</a>
+</div>
+{% endblock %}
+
+=== templates/task/history.html.twig ===
+{% extends 'base.html.twig' %}
+
+{% block title %}История задачи #{{ task.id }}{% endblock %}
+
+{% block body %}
+    <div class="container mt-4">
+        <h1>История задачи #{{ task.id }}: {{ task.name }}</h1>
+
+        <table class="table table-striped">
+            <thead>
+            <tr>
+                <th>Дата</th>
+                <th>Действие</th>
+                <th>Старые данные</th>
+                <th>Новые данные</th>
+            </tr>
+            </thead>
+            <tbody>
+            {% for event in events %}
+                <tr>
+                    <td>{{ event.createdAt|date('d.m.Y H:i:s') }}</td>
+                    <td>{{ event.action }}</td>
+                    <td>{{ event.oldData | json_encode }}</td>
+                    <td>{{ event.newData | json_encode }}</td>
+                </tr>
+            {% else %}
+                <tr>
+                    <td colspan="4">Нет событий</td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+
+        <a href="{{ path('app_tasks') }}">← Назад к списку</a>
+    </div>
+{% endblock %}
+
+=== templates/task/_delete_form.html.twig ===
+<form method="post" action="{{ path('app_task_delete', {'id': task.id}) }}" onsubmit="return confirm('Are you sure you want to delete this item?');">
+    <input type="hidden" name="_token" value="{{ csrf_token('delete' ~ task.id) }}">
+    <button class="btn btn-sm btn-outline-danger">Delete</button>
+</form>
+
+=== templates/task/index.html.twig ===
+{% extends 'base.html.twig' %}
+
+{% block title %}Список задач{% endblock %}
+
+{% block body %}
+
+    <div class="container mt-4">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h1>Список задач</h1>
+            <a href="{{ path('app_task_new') }}" class="btn btn-success">
+                ➕ Создать задачу
+            </a>
+        </div>
+
+        <div class="card mb-4">
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="btn-group" role="group">
+                            <a href="{{ path('app_tasks', {page: result.currentPage, filter: 'all', sort: query.sort.value, order: query.order.value}) }}"
+                               class="btn {{ query.filter.isAll ? 'btn-primary' : 'btn-outline-secondary' }}">Все</a>
+                            <a href="{{ path('app_tasks', {page: result.currentPage, filter: 'completed', sort: query.sort.value, order: query.order.value}) }}"
+                               class="btn {{ query.filter.isCompleted ? 'btn-primary' : 'btn-outline-secondary' }}">Выполненные</a>
+                            <a href="{{ path('app_tasks', {page: result.currentPage, filter: 'not_completed', sort: query.sort.value, order: query.order.value}) }}"
+                               class="btn {{ query.filter.isNotCompleted ? 'btn-primary' : 'btn-outline-secondary' }}">Не выполненные</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="table-responsive">
+            <table class="table table-striped table-hover">
+                <thead>
+                <tr>
+                    <th>
+                        <a href="{{ path('app_tasks', {filter: query.filter.value, sort: enum('App\\Enum\\TaskSort').ID.value, order: (query.sort.isId and query.order.isAsc) ? enum('App\\Enum\\TaskOrder').DESC.value : enum('App\\Enum\\TaskOrder').ASC.value, page: result.currentPage}) }}">
+                            ID
+                        </a>
+                    </th>
+                    <th>
+                        <a href="{{ path('app_tasks', {filter: query.filter.value, sort: 'name', order: (query.sort.isName and query.order.isAsc) ? enum('App\\Enum\\TaskOrder').DESC.value : enum('App\\Enum\\TaskOrder').ASC.value, page: result.currentPage}) }}">
+                            Название
+                            {% if query.sort.isName %}
+                                {{ query.order.isAsc ? ' ▲' : ' ▼' }}
+                            {% endif %}
+                        </a>
+                    </th>
+                    <th>Статус</th>
+                    <th>
+                        <a href="{{ path('app_tasks', {filter: query.filter.value, sort: 'created_at', order: (query.sort.isCreatedAt and query.order.isAsc) ? 'desc' : 'asc', page: result.currentPage}) }}">
+                            Дата создания
+                            {% if query.sort.isCreatedAt %}
+                                {{ query.order.isAsc ? ' ▲' : ' ▼' }}
+                            {% endif %}
+                        </a>
+                    </th>
+                    <th class="text-end">Действия</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for task in result.items %}
+                    <tr>
+                        <td>{{ task.id }}</td>
+                        <td>{{ task.name }}</td>
+                        <td>
+                            {% if task.isCompleted %}
+                                <span class="badge bg-success">✅ Выполнена</span>
+                            {% else %}
+                                <span class="badge bg-secondary">❌ Не выполнена</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ task.createdAt ? task.createdAt|date('d.m.Y H:i') : '' }}</td>
+                        <td class="text-end">
+                            <a href="{{ path('app_task_edit', {'id': task.id}) }}" class="btn btn-sm btn-outline-primary me-1">✏️ Редактировать</a>
+                            <form method="post" action="{{ path('app_task_delete', {'id': task.id}) }}" onsubmit="return confirm('Удалить задачу?');" style="display: inline-block;">
+                                <input type="hidden" name="_token" value="{{ csrf_token('delete' ~ task.id) }}">
+                                <button class="btn btn-sm btn-outline-danger">🗑️ Удалить</button>
+                            </form>
+                        </td>
+                    </tr>
+                {% else %}
+                    <tr>
+                        <td colspan="4" class="text-center">
+                            📭 Нет задач. Самое время создать первую!
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        {# Пагинация #}
+        {% if result.totalPages > 1 %}
+            <nav aria-label="Page navigation" class="mt-4">
+                <ul class="pagination justify-content-center">
+                    {# Previous page #}
+                    {% if result.currentPage > 1 %}
+                        <li class="page-item">
+                            <a class="page-link" href="{{ path('app_tasks', {page: result.currentPage - 1, filter: query.filter.value, sort: query.sort.value, order: query.order.value}) }}">
+                                &laquo; Назад
+                            </a>
+                        </li>
+                    {% else %}
+                        <li class="page-item disabled">
+                            <span class="page-link">&laquo; Назад</span>
+                        </li>
+                    {% endif %}
+
+                    {# Страницы #}
+                    {% set startPage = max(1, result.currentPage - 2) %}
+                    {% set endPage = min(result.totalPages, result.currentPage + 2) %}
+
+                    {% if startPage > 1 %}
+                        <li class="page-item">
+                            <a class="page-link" href="{{ path('app_tasks', {page: 1, filter: query.filter.value, sort: query.sort.value, order: query.order.value}) }}">1</a>
+                        </li>
+                        {% if startPage > 2 %}
+                            <li class="page-item disabled"><span class="page-link">...</span></li>
+                        {% endif %}
+                    {% endif %}
+
+                    {% for pageNum in startPage..endPage %}
+                        <li class="page-item {{ pageNum == result.currentPage ? 'active' : '' }}">
+                            <a class="page-link" href="{{ path('app_tasks', {page: pageNum, filter: query.filter.value, sort: query.sort.value, order: query.order.value}) }}">{{ pageNum }}</a>
+                        </li>
+                    {% endfor %}
+
+                    {% if endPage < result.totalPages %}
+                        {% if endPage < result.totalPages - 1 %}
+                            <li class="page-item disabled"><span class="page-link">...</span></li>
+                        {% endif %}
+                        <li class="page-item">
+                            <a class="page-link" href="{{ path('app_tasks', {page: result.totalPages, filter: query.filter.value, sort: query.sort.value, order: query.order.value}) }}">{{ result.totalPages }}</a>
+                        </li>
+                    {% endif %}
+
+                    {# Next page #}
+                    {% if result.currentPage < result.totalPages %}
+                        <li class="page-item">
+                            <a class="page-link" href="{{ path('app_tasks', {page: result.currentPage + 1, filter: query.filter.value, sort: query.sort.value, order: query.order.value}) }}">
+                                Вперёд &raquo;
+                            </a>
+                        </li>
+                    {% else %}
+                        <li class="page-item disabled">
+                            <span class="page-link">Вперёд &raquo;</span>
+                        </li>
+                    {% endif %}
+                </ul>
+            </nav>
+        {% endif %}
+    </div>
+{% endblock %}
+
+=== templates/task/show.html.twig ===
+{% extends 'base.html.twig' %}
+
+{% block title %}Task{% endblock %}
+
+{% block body %}
+<div class="container mt-4">
+    <h1>Task</h1>
+
+    <table class="table">
+        <tbody>
+            <tr>
+                <th>Id</th>
+                <td>{{ task.id }}</td>
+            </tr>
+            <tr>
+                <th>Name</th>
+                <td>{{ task.name }}</td>
+            </tr>
+            <tr>
+                <th>Is_completed</th>
+                <td>{{ task.isCompleted ? 'Yes' : 'No' }}</td>
+            </tr>
+            <tr>
+                <th>Created_at</th>
+                <td>{{ task.createdAt ? task.createdAt|date('Y-m-d H:i:s') : '' }}</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <a href="{{ path('app_tasks') }}">back to list</a>
+
+    <a href="{{ path('app_task_edit', {'id': task.id}) }}">edit</a>
+</div>
+{% endblock %}
+
+=== templates/task/edit.html.twig ===
+{% extends 'base.html.twig' %}
+
+{% block title %}Edit Task{% endblock %}
+
+{% block body %}
+<div class="container mt-4">
+    <h1>Edit Task</h1>
+
+    {{ include('task/_form.html.twig', {'button_label': 'Update'}) }}
+
+    <a href="{{ path('app_tasks') }}">back to list</a>
+</div>
+{% endblock %}
+
+=== templates/task/_form.html.twig ===
+{{ form_start(form) }}
+    {{ form_errors(form) }}
+    {{ form_widget(form) }}
+<button class="btn btn-sm btn-outline-primary">{{ button_label|default('Save') }}</button>
+{{ form_end(form) }}
+

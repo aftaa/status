@@ -2,6 +2,7 @@
 
 namespace App\Entity;
 
+use App\Enum\TaskStatus;
 use App\Repository\TaskRepository;
 use Doctrine\ORM\Mapping as ORM;
 
@@ -17,8 +18,8 @@ class Task
     #[ORM\Column(length: 255)]
     private ?string $name = null;
 
-    #[ORM\Column]
-    private ?bool $is_completed = null;
+    #[ORM\Column(length: 20, enumType: TaskStatus::class)]
+    private TaskStatus $status = TaskStatus::DEFAULT;
 
     #[ORM\Column(type: 'datetime_immutable', updatable: false)]
     private ?\DateTimeImmutable $created_at = null;
@@ -42,14 +43,7 @@ class Task
 
     public function isCompleted(): ?bool
     {
-        return $this->is_completed;
-    }
-
-    public function setIsCompleted(bool $is_completed): static
-    {
-        $this->is_completed = $is_completed;
-
-        return $this;
+        return $this->status === TaskStatus::COMPLETED;
     }
 
     public function getCreatedAt(): ?\DateTimeImmutable
@@ -69,6 +63,25 @@ class Task
     {
         $this->created_at = new \DateTimeImmutable();
     }
-}
 
-// symfony console dbal:run-sql 'SELECT * FROM task'
+    public function getStatus(): TaskStatus
+    {
+        return $this->status;
+    }
+
+    public function setStatus(TaskStatus $status): static
+    {
+        $this->status = $status;
+        return $this;
+    }
+
+    public function toArray(): array
+    {
+        return [
+            'id' => $this->id,
+            'name' => $this->name,
+            'status' => $this->status->value,
+            'created_at' => $this->created_at?->format('c'),
+        ];
+    }
+}

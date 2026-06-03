@@ -12,14 +12,17 @@ use Symfony\Component\HttpFoundation\Request;
 
 final class TaskListQueryFactory
 {
+    final public const int PAGE = 1;
+    final public const int LIMIT = 20;
+
     public function fromRequest(Request $request): TaskListQuery
     {
         return new TaskListQuery(
-            sort:   TaskSort::tryFrom($request->query->get('sort', 'created_at')) ?? TaskSort::CREATED_AT,
-            order:  TaskOrder::tryFrom($request->query->get('order', 'asc')) ?? TaskOrder::ASC,
-            filter: TaskFilter::tryFrom($request->query->get('filter', 'all')) ?? TaskFilter::ALL,
-            page:   new Page($request->query->get('page', 1)),
-            limit:  new Limit($request->query->get('limit', 20)),
+            sort:   TaskSort::tryFrom($request->query->get('sort')) ?? TaskSort::DEFAULT,
+            order:  TaskOrder::tryFrom($request->query->get('order')) ?? TaskOrder::DEFAULT,
+            filter: TaskFilter::tryFrom($request->query->get('filter')) ?? TaskFilter::DEFAULT,
+            page:   new Page($request->query->get('page', self::PAGE)),
+            limit:  new Limit($request->query->get('limit', self::LIMIT)),
         );
     }
 }

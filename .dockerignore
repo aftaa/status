@@ -1,0 +1,24 @@
+# Данные БД (не нужны при сборке)
+docker/mysql/data
+docker/redis/data
+docker/mongodb/data
+
+# Логи
+docker/nginx/logs
+
+# Git
+.git
+.gitignore
+.gitconfig
+
+# Dev-файлы
+.env.local
+.env.*.local
+docker-compose.override.yml
+
+# Зависимости (ставятся внутри контейнера)
+vendor
+node_modules
+
+# Документация
+*.md

@@ -2,48 +2,46 @@ services:
     nginx:
         image: nginx:1.29.8
         ports:
-            - "8003:80"
+            - "80:80"
         volumes:
-            - .:/var/www/test3
             - ./docker/nginx/hosts:/etc/nginx/conf.d
-            - ./docker/nginx/logs:/var/log/nginx
         restart: always
         depends_on:
             - php
         networks:
             - app
+        healthcheck:
+            test: ["CMD", "nginx", "-t"]
+            timeout: 10s
+            retries: 3
+            start_period: 5s
 
     mysql:
         image: mysql:9.7.0
-        ports:
-            - "8004:3306"
         volumes:
-            - ./docker/mysql/data:/var/lib/mysql
-            - ./docker/mysql/init:/docker-entrypoint-initdb.d
+            - mysql_data:/var/lib/mysql
         environment:
-            MYSQL_ROOT_PASSWORD: root
-            MYSQL_DATABASE: task_manager
-            MYSQL_USER: task_manager
-            MYSQL_PASSWORD: task_manager
+            MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+            MYSQL_DATABASE: ${MYSQL_DATABASE}
+            MYSQL_USER: ${MYSQL_USER}
+            MYSQL_PASSWORD: ${MYSQL_PASSWORD}
         restart: always
         healthcheck:
-            test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-proot"]
-            timeout: 3s
-            retries: 15
-            start_period: 1s
+            test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD}"]
+            timeout: 10s
+            retries: 5
+            start_period: 30s
         networks:
             - data
 
     redis:
         image: redis:8.6-alpine3.23
-        ports:
-            - "8005:6379"
         restart: always
         volumes:
-            - ./docker/redis/data:/data
-        command: redis-server --appendonly yes
+            - redis_data:/data
+        command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}
         healthcheck:
-            test: ["CMD", "redis-cli", "ping"]
+            test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
             timeout: 10s
             retries: 5
             start_period: 5s
@@ -51,12 +49,13 @@ services:
             - data
 
     mongodb:
-        image: mongo:latest
-        ports:
-            - "8006:27017"
-        volumes:
-            - ./docker/mongodb/data:/data/db
+        image: mongo:8
         restart: always
+        volumes:
+            - mongo_data:/data/db
+        environment:
+            MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER}
+            MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD}
         healthcheck:
             test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
             timeout: 10s
@@ -69,10 +68,7 @@ services:
         build:
             context: .
             dockerfile: ./docker/php/Dockerfile
-            target: dev
-        volumes:
-            - ~/.gitconfig:/home/appuser/.gitconfig:ro
-            - .:/var/www/test3
+            target: production
         restart: always
         depends_on:
             mysql:
@@ -81,6 +77,11 @@ services:
                 condition: service_healthy
             mongodb:
                 condition: service_healthy
+        healthcheck:
+            test: ["CMD", "php-fpm", "-t"]
+            timeout: 10s
+            retries: 3
+            start_period: 5s
         networks:
             - app
             - data
@@ -90,3 +91,9 @@ networks:
         driver: bridge
     data:
         driver: bridge
+        internal: true
+
+volumes:
+    mysql_data:
+    redis_data:
+    mongo_data:

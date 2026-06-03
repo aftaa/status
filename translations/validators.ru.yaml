@@ -1,0 +1,3 @@
+# translations/validators.ru.yaml
+TaskDto.name.not_blank: 'Название задачи не должно быть пустым'
+TaskDto.name.length: 'Название должно быть от {{ min }} до {{ max }} символов'

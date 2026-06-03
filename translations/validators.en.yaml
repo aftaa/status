@@ -1,0 +1,3 @@
+# translations/validators.ru.yaml
+TaskDto.name.not_blank: 'Task name cannot be blank'
+TaskDto.name.length: 'Length of task name must be between {{ min }} and {{ max }} symbols'

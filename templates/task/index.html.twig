@@ -3,6 +3,7 @@
 {% block title %}Список задач{% endblock %}
 
 {% block body %}
+
     <div class="container mt-4">
         <div class="d-flex justify-content-between align-items-center mb-4">
             <h1>Список задач</h1>
@@ -33,7 +34,12 @@
                 <thead>
                 <tr>
                     <th>
-                        <a href="{{ path('app_tasks', {filter: query.filter.value, sort: 'name', order: (query.sort.isName and query.order.isAsc) ? 'desc' : 'asc', page: result.currentPage}) }}">
+                        <a href="{{ path('app_tasks', {filter: query.filter.value, sort: enum('App\\Enum\\TaskSort').ID.value, order: (query.sort.isId and query.order.isAsc) ? enum('App\\Enum\\TaskOrder').DESC.value : enum('App\\Enum\\TaskOrder').ASC.value, page: result.currentPage}) }}">
+                            ID
+                        </a>
+                    </th>
+                    <th>
+                        <a href="{{ path('app_tasks', {filter: query.filter.value, sort: 'name', order: (query.sort.isName and query.order.isAsc) ? enum('App\\Enum\\TaskOrder').DESC.value : enum('App\\Enum\\TaskOrder').ASC.value, page: result.currentPage}) }}">
                             Название
                             {% if query.sort.isName %}
                                 {{ query.order.isAsc ? ' ▲' : ' ▼' }}
@@ -55,6 +61,7 @@
                 <tbody>
                 {% for task in result.items %}
                     <tr>
+                        <td>{{ task.id }}</td>
                         <td>{{ task.name }}</td>
                         <td>
                             {% if task.isCompleted %}

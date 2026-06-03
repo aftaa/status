@@ -7,6 +7,8 @@ enum TaskOrder: string
     case ASC = 'asc';
     case DESC = 'desc';
 
+    final public const self DEFAULT = self::ASC;
+
     public function getLabel(): string
     {
         return match ($this) {

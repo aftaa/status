@@ -21,3 +21,4 @@
 
 /docker/mysql/data
 /docker/redis/data
+/docker/mongodb/data
