@@ -2,7 +2,7 @@ services:
     nginx:
         image: nginx:1.29.8
         ports:
-            - "80:80"
+            - "127.0.0.1:8003:80"
         volumes:
             - ./docker/nginx/hosts:/etc/nginx/conf.d
         restart: always
@@ -12,6 +12,29 @@ services:
             - app
         healthcheck:
             test: ["CMD", "nginx", "-t"]
+            timeout: 10s
+            retries: 3
+            start_period: 5s
+
+    php:
+        build:
+            context: .
+            dockerfile: ./docker/php/Dockerfile
+            target: production
+        restart: always
+        environment:
+            APP_ENV: prod
+            APP_DEBUG: 0
+            MONGODB_URL: ${MONGODB_URL}
+            MONGODB_DB: ${MONGODB_DB}
+        depends_on:
+            mysql:
+                condition: service_healthy
+        networks:
+            - app
+            - data
+        healthcheck:
+            test: ["CMD", "php-fpm", "-t"]
             timeout: 10s
             retries: 3
             start_period: 5s
@@ -34,58 +57,6 @@ services:
         networks:
             - data
 
-    redis:
-        image: redis:8.6-alpine3.23
-        restart: always
-        volumes:
-            - redis_data:/data
-        command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}
-        healthcheck:
-            test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
-            timeout: 10s
-            retries: 5
-            start_period: 5s
-        networks:
-            - data
-
-    mongodb:
-        image: mongo:8
-        restart: always
-        volumes:
-            - mongo_data:/data/db
-        environment:
-            MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER}
-            MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD}
-        healthcheck:
-            test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
-            timeout: 10s
-            retries: 5
-            start_period: 10s
-        networks:
-            - data
-
-    php:
-        build:
-            context: .
-            dockerfile: ./docker/php/Dockerfile
-            target: production
-        restart: always
-        depends_on:
-            mysql:
-                condition: service_healthy
-            redis:
-                condition: service_healthy
-            mongodb:
-                condition: service_healthy
-        healthcheck:
-            test: ["CMD", "php-fpm", "-t"]
-            timeout: 10s
-            retries: 3
-            start_period: 5s
-        networks:
-            - app
-            - data
-
 networks:
     app:
         driver: bridge
@@ -95,5 +66,3 @@ networks:
 
 volumes:
     mysql_data:
-    redis_data:
-    mongo_data:
