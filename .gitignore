@@ -22,4 +22,4 @@
 /docker/mysql/data
 /docker/redis/data
 /docker/mongodb/data
-/docker/nginx/logs/
+/docker/nginx/logs
