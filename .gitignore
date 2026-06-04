@@ -23,3 +23,7 @@
 /docker/redis/data
 /docker/mongodb/data
 /docker/nginx/logs/
+
+###> lexik/jwt-authentication-bundle ###
+/config/jwt/*.pem
+###< lexik/jwt-authentication-bundle ###
