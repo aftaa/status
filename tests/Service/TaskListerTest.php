@@ -2,7 +2,11 @@
 
 namespace App\Tests\Service;
 
+use App\Dto\PaginatedResult;
 use App\Dto\TaskListQuery;
+use App\Enum\TaskFilter;
+use App\Enum\TaskOrder;
+use App\Enum\TaskSort;
 use App\Factory\SortingStrategyFactory;
 use App\Factory\SpecificationFactory;
 use App\Service\DoctrinePaginator;
@@ -10,6 +14,8 @@ use App\Service\TaskLister;
 use App\Specification\SpecificationInterface;
 use App\Strategy\SortingStrategyInterface;
 use App\Repository\TaskRepository;
+use App\ValueObject\Pagination\Limit;
+use App\ValueObject\Pagination\Page;
 use Doctrine\ORM\QueryBuilder;
 use PHPUnit\Framework\TestCase;
 
@@ -18,8 +24,6 @@ class TaskListerTest extends TestCase
     public function testApplyFilterAndSorting(): void
     {
         $qb = $this->createMock(QueryBuilder::class);
-        $qb->method('getQuery')->willReturnSelf();
-//        $qb->method('getResult')->willReturn([]);
 
         $repository = $this->createMock(TaskRepository::class);
         $repository->expects($this->once())
@@ -51,14 +55,20 @@ class TaskListerTest extends TestCase
         $paginator = $this->createMock(DoctrinePaginator::class);
         $paginator->expects($this->once())
             ->method('paginate')
-            ->with($qb, 2, 5)
-            ->willReturn(new \App\Dto\PaginatedResult([], 2, 0, 5));
+            ->with($qb, new Page(2), new Limit(5))
+            ->willReturn(new PaginatedResult([], 2, 0, 5));
 
-        $query = new TaskListQuery('name', 'asc', 'completed');
+        $query = new TaskListQuery(
+            sort: TaskSort::NAME,
+            order: TaskOrder::ASC,
+            filter: TaskFilter::COMPLETED,
+            page: new Page(2),
+            limit: new Limit(5),
+        );
 
         $service = new TaskLister($repository, $sortingStrategyFactory, $specificationFactory, $paginator);
-        $result = $service->getFilteredAndSortedTasks($query, 2, 5);
+        $result = $service->getFilteredAndSortedTasks($query);
 
-        $this->assertInstanceOf(\App\Dto\PaginatedResult::class, $result);
+        $this->assertInstanceOf(PaginatedResult::class, $result);
     }
 }

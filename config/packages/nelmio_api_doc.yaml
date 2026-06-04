@@ -1,0 +1,25 @@
+nelmio_api_doc:
+    documentation:
+        info:
+            title: 'Маячок API'
+            description: 'API для управления статусами'
+            version: '1.0.0'
+        security:
+            - bearerAuth: []
+        components:
+            securitySchemes:
+                bearerAuth:
+                    type: http
+                    scheme: bearer
+                    bearerFormat: JWT
+    areas:
+        default:
+            path_patterns: []
+        api:
+            path_patterns:
+                - ^/api/
+    models:
+        use_jms: false
+        names:
+            - { alias: Status, type: App\Entity\Status, groups: ['status:read'] }
+            - { alias: User, type: App\Entity\User, groups: ['user:read'] }
