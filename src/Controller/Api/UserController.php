@@ -6,13 +6,18 @@ use App\Repository\UserRepository;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpFoundation\StreamedResponse;
+use Symfony\Component\Mercure\HubInterface;
 use Symfony\Component\Routing\Attribute\Route;
 use OpenApi\Attributes as OA;
 
 #[Route('/api/users', name: 'api_users_')]
 class UserController extends AbstractController
 {
-    public function __construct(private UserRepository $userRepository) {}
+    public function __construct(
+        private readonly UserRepository $userRepository,
+        private readonly HubInterface   $hub,
+    ) {}
 
     #[OA\Get(
         path: '/api/users/search',
@@ -61,6 +66,26 @@ class UserController extends AbstractController
         );
     }
 
+    #[Route('/{id}/status/stream', name: 'status_stream', methods: ['GET'])]
+    public function statusStream(int $id): StreamedResponse
+    {
+        $user = $this->userRepository->find($id);
+        if (!$user) {
+            throw $this->createNotFoundException();
+        }
+
+        $topic = 'user/' . $id . '/status';
+        $url = $this->hub->getUrl($topic);
+
+        return new StreamedResponse(function () use ($url) {
+            readfile($url);
+        }, 200, [
+            'Content-Type' => 'text/event-stream',
+            'Cache-Control' => 'no-cache',
+            'X-Accel-Buffering' => 'no',
+        ]);
+    }
+
     #[OA\Get(
         path: '/api/users/{id}',
         description: 'Получить данные пользователя по ID',
@@ -90,7 +115,7 @@ class UserController extends AbstractController
             new OA\Response(response: 404, description: 'Пользователь не найден')
         ]
     )]
-    #[Route('/{id}', name: 'show', methods: ['GET'])]
+    #[Route('/{id}', name: 'show', requirements: ['id' => '\d+'], methods: ['GET'])]
     public function show(int $id): JsonResponse
     {
         $user = $this->userRepository->find($id);
@@ -101,7 +126,7 @@ class UserController extends AbstractController
 
         return $this->json(
             ['data' => $user],
-            context: ['groups' => 'user:read']
+            context: ['groups' => ['user:read', 'status:read']]
         );
     }
 }

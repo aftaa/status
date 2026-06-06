@@ -8,6 +8,8 @@ use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\Mercure\HubInterface;
+use Symfony\Component\Mercure\Update;
 use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\Security\Http\Attribute\CurrentUser;
 use OpenApi\Attributes as OA;
@@ -18,6 +20,7 @@ class UserStatusController extends AbstractController
     public function __construct(
         private StatusRepository $statusRepository,
         private EntityManagerInterface $em,
+        private HubInterface $hub,
     ) {}
 
     #[OA\Get(
@@ -105,6 +108,21 @@ class UserStatusController extends AbstractController
 
         $user->setCurrentStatus($status);
         $this->em->flush();
+
+        $update = new Update(
+            topics: ['user/' . $user->getId() . '/status'],
+            data: json_encode([
+                'userId' => $user->getId(),
+                'status' => [
+                    'slug' => $status->getSlug(),
+                    'name' => $status->getName(),
+                    'color' => $status->getColor(),
+                    'bgColor' => $status->getBgColor(),
+                    'iconUrl' => $status->getIconUrl(),
+                ]
+            ])
+        );
+        $this->hub->publish($update);
 
         return $this->json([
             'message' => 'Status updated',

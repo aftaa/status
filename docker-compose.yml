@@ -2,14 +2,15 @@ services:
     nginx:
         image: nginx:1.29.8
         ports:
-            - "8003:80"
+            - "8002:80"
         volumes:
             - .:/var/www/test3
             - ./docker/nginx/hosts:/etc/nginx/conf.d
             - ./docker/nginx/logs:/var/log/nginx
         restart: always
         depends_on:
-            - php
+            php:
+                condition: service_started
         networks:
             - app
 
@@ -64,6 +65,23 @@ services:
             start_period: 10s
         networks:
             - data
+
+    mercure:
+        image: dunglas/mercure
+        environment:
+            SERVER_NAME: ':80'
+            MERCURE_PUBLISHER_JWT_KEY: 'l+GvN1/vT4ik8oxZL848Jm7ehk1zN64oEH0yr8AWBpA='
+            MERCURE_SUBSCRIBER_JWT_KEY: 'l+GvN1/vT4ik8oxZL848Jm7ehk1zN64oEH0yr8AWBpA='
+            MERCURE_EXTRA_DIRECTIVES: |
+                cors_origins "*"
+                publish_origins "http://localhost:8002"
+                anonymous 1
+                subscriptions 1
+        ports:
+            - "8008:80"
+        restart: always
+        networks:
+            - app
 
     php:
         build:
