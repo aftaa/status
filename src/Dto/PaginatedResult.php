@@ -2,13 +2,13 @@
 
 namespace App\Dto;
 
-class PaginatedResult
+readonly class PaginatedResult
 {
     public function __construct(
-        public readonly array $items,
-        public readonly int $currentPage,
-        public readonly int $totalItems,
-        public readonly int $itemsPerPage,
+        public array $items,
+        public int   $currentPage,
+        public int   $totalItems,
+        public int   $itemsPerPage,
     ) {}
 
     public function getTotalPages(): int

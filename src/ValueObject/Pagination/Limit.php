@@ -2,7 +2,7 @@
 
 namespace App\ValueObject\Pagination;
 
-class Limit
+class Limit implements \Stringable
 {
     public private(set) int $value {
         set (int $value) {

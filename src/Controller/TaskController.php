@@ -2,117 +2,53 @@
 
 namespace App\Controller;
 
-use App\Dto\TaskDto;
-use App\Entity\Task;
-use App\Enum\TaskOrder;
-use App\Factory\TaskEventFactory;
-use App\Factory\TaskFactory;
+use App\Command\Task\CreateTaskCommand;
+use App\Command\Task\DeleteTaskCommand;
+use App\Command\Task\UpdateTaskCommand;
+use App\Factory\TaskDtoFactory;
 use App\Factory\TaskListQueryFactory;
 use App\Form\TaskType;
-use App\Service\TaskEventLogger;
-use App\Service\TaskListerInterface;
-use Doctrine\ORM\EntityManagerInterface;
+use App\Query\Task\GetTaskForEditQuery;
+use App\Query\Task\GetTaskListQuery;
+use App\Service\QueryBus;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Component\Routing\Attribute\Route;
 
-#[Route('/task')]
-final class TaskController extends AbstractController
+class TaskController extends AbstractController
 {
-    public function __construct(
-        private readonly EntityManagerInterface $entityManager,
-        private readonly TaskListerInterface    $taskLister,
-        private readonly TaskListQueryFactory   $queryFactory,
-        private readonly TaskFactory            $taskFactory,
-        private readonly TaskEventLogger        $taskEventLogger,
-        private readonly TaskEventFactory       $taskEventFactory,
-    ) {
-    }
-
-    #[Route('/', name: 'app_tasks')]
-    public function index(Request $request): Response
-    {
-        $query = $this->queryFactory->fromRequest($request);
-
-        $result = $this->taskLister->getFilteredAndSortedTasks($query);
+    #[Route('/task', name: 'app_tasks')]
+    public function index(
+        Request $request,
+        TaskListQueryFactory $queryFactory,
+        QueryBus $queryBus,
+    ): Response {
+        $query = $queryFactory->fromRequest($request);
+        $result = $queryBus->dispatch(new GetTaskListQuery($query));
 
         return $this->render('task/index.html.twig', [
             'result' => $result,
             'query' => $query,
-            'taskOrderEnum' => TaskOrder::cases(),
         ]);
     }
 
-    #[Route('/{id}', name: 'app_task_show', requirements: ['id' => '\d+'], methods: ['GET'])]
-    public function show(Task $task): Response
-    {
-        return $this->render('task/show.html.twig', [
-            'task' => $task,
-        ]);
-    }
-
-    #[Route('/{id}/edit', name: 'app_task_edit', methods: ['GET', 'POST'])]
-    public function edit(Request $request, Task $task): Response
-    {
-        $taskDto = new TaskDto(
-            name: $task->getName() ?? '',
-            status: $task->getStatus(),
-        );
-
+    #[Route('/task/new', name: 'app_task_new', methods: ['GET', 'POST'])]
+    public function new(
+        Request $request,
+        TaskDtoFactory $taskDtoFactory,
+        MessageBusInterface $commandBus,
+    ): Response {
+        $taskDto = $taskDtoFactory->createEmpty();
         $form = $this->createForm(TaskType::class, $taskDto);
         $form->handleRequest($request);
 
         if ($form->isSubmitted() && $form->isValid()) {
-            $this->taskFactory->updateFromDto($task, $taskDto);
-            $this->entityManager->flush();
+            $commandBus->dispatch(new CreateTaskCommand($taskDto));
 
-            $this->taskEventLogger->log(
-                $this->taskEventFactory->createFromTask('edit', $task, $taskDto)
-            );
-
-            return $this->redirectToRoute('app_tasks', [], Response::HTTP_SEE_OTHER);
-        }
-
-        return $this->render('task/edit.html.twig', [
-            'task' => $task,
-            'form' => $form,
-        ]);
-    }
-
-    #[Route('/{id}', name: 'app_task_delete', requirements: ['id' => '\d+'], methods: ['POST'])]
-    public function delete(Request $request, Task $task): Response
-    {
-        if ($this->isCsrfTokenValid('delete' . $task->getId(), $request->getPayload()->getString('_token'))) {
-            $this->taskEventLogger->log(
-                $this->taskEventFactory->createFromTask('delete', $task)
-            );
-
-            $this->entityManager->remove($task);
-            $this->entityManager->flush();
-        }
-
-        return $this->redirectToRoute('app_tasks', [], Response::HTTP_SEE_OTHER);
-    }
-
-    #[Route('/new', name: 'app_task_new', methods: ['GET', 'POST'])]
-    public function new(Request $request): Response
-    {
-        $taskDto = new TaskDto();
-
-        $form = $this->createForm(TaskType::class, $taskDto);
-        $form->handleRequest($request);
-
-        if ($form->isSubmitted() && $form->isValid()) {
-            $task = $this->taskFactory->createFromDto($taskDto);
-            $this->entityManager->persist($task);
-            $this->entityManager->flush();
-
-            $this->taskEventLogger->log(
-                $this->taskEventFactory->createFromTask('create', $task)
-            );
-
-            return $this->redirectToRoute('app_tasks', [], Response::HTTP_SEE_OTHER);
+            $this->addFlash('success', 'Задача создана!');
+            return $this->redirectToRoute('app_tasks');
         }
 
         return $this->render('task/new.html.twig', [
@@ -120,14 +56,59 @@ final class TaskController extends AbstractController
         ]);
     }
 
-    #[Route('/{id}/history', name: 'app_task_history', methods: ['GET'])]
-    public function history(Task $task): Response
-    {
-        $events = $this->taskEventLogger->findByTaskId($task->getId());
+    #[Route('/{id}/edit', name: 'app_task_edit', methods: ['GET'])]
+    public function edit(
+        int $id,
+        QueryBus $queryBus,
+    ): Response {
+        $taskDto = $queryBus->dispatch(new GetTaskForEditQuery($id));
 
-        return $this->render('task/history.html.twig', [
-            'task' => $task,
-            'events' => $events,
+        $form = $this->createForm(TaskType::class, $taskDto);
+
+        return $this->render('task/edit.html.twig', [
+            'form' => $form,
+            'taskId' => $id,
         ]);
+    }
+
+    #[Route('/{id}/edit', name: 'app_task_update', methods: ['POST'])]
+    public function update(
+        Request $request,
+        int $id,
+        TaskDtoFactory $taskDtoFactory,
+        MessageBusInterface $commandBus,
+    ): Response {
+        $taskDto = $taskDtoFactory->createFromRequest($request);
+        $form = $this->createForm(TaskType::class, $taskDto);
+        $form->handleRequest($request);
+
+        if ($form->isSubmitted() && $form->isValid()) {
+            $commandBus->dispatch(new UpdateTaskCommand($id, $taskDto));
+
+            $this->addFlash('success', 'Задача обновлена!');
+            return $this->redirectToRoute('app_tasks');
+        }
+
+        return $this->render('task/edit.html.twig', [
+            'form' => $form,
+            'taskId' => $id,
+        ]);
+    }
+
+    #[Route('/{id}/delete', name: 'app_task_delete', methods: ['POST'])]
+    public function delete(
+        Request $request,
+        int $id,
+        MessageBusInterface $commandBus,
+    ): Response {
+        $tokenId = 'delete' . $id;
+        if (!$this->isCsrfTokenValid($tokenId, $request->getPayload()->get('_token'))) {
+            throw $this->createAccessDeniedException('Invalid CSRF token');
+        }
+
+        $commandBus->dispatch(new DeleteTaskCommand($id));
+
+        $this->addFlash('success', 'Задача удалена!');
+        return $this->redirectToRoute('app_tasks');
     }
 }

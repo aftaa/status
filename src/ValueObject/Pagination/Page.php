@@ -2,7 +2,7 @@
 
 namespace App\ValueObject\Pagination;
 
-class Page
+class Page implements \Stringable
 {
     public private(set) int $number {
         set (int $number) {

@@ -9,9 +9,12 @@ use App\Dto\PaginatedResult;
 
 class DoctrinePaginator
 {
-    public function paginate(QueryBuilder $qb, Page $page, Limit $limit): PaginatedResult
+    public function paginate(QueryBuilder $qb, Page $page, Limit $limit, string $idColumn = 'id'): PaginatedResult
     {
-        $total = (clone $qb)->select('COUNT(t.id)')
+        $rootAlias = $qb->getRootAliases()[0] ?? 't';
+
+        $total = (int) (clone $qb)
+            ->select(sprintf('COUNT(DISTINCT %s.%s)', $rootAlias, $idColumn))
             ->getQuery()
             ->getSingleScalarResult();
 

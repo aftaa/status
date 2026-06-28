@@ -6,6 +6,7 @@ use App\Dto\PaginatedResult;
 use App\Dto\TaskListQuery;
 use App\Service\TaskListerInterface;
 use Psr\Cache\InvalidArgumentException;
+use Psr\Log\LoggerInterface;
 use Symfony\Contracts\Cache\CacheInterface;
 use Symfony\Contracts\Cache\ItemInterface;
 
@@ -14,6 +15,7 @@ readonly class CachedTaskLister implements TaskListerInterface
     public function __construct(
         private TaskListerInterface $delegate,
         private CacheInterface      $cache,
+        private LoggerInterface     $logger,
     )
     {
     }
@@ -32,11 +34,20 @@ readonly class CachedTaskLister implements TaskListerInterface
             $query->limit,
         );
 
-        return $this->cache->get($cacheKey, function (ItemInterface $item) use ($query) {
-            $item->expiresAfter(600);
-            $item->tag(['tasks_collection']);
+        try {
+            return $this->cache->get($cacheKey, function (ItemInterface $item) use ($query) {
+                $item->expiresAfter(600);
+                $item->tag(['tasks_collection']);
+
+                return $this->delegate->getFilteredAndSortedTasks($query);
+            });
+        } catch (\Throwable $exception) {
+            $this->logger->error('Redis error', [
+                'message' => $exception->getMessage(),
+                'cacheKey' => $cacheKey,
+            ]);
 
             return $this->delegate->getFilteredAndSortedTasks($query);
-        });
+        }
     }
 }

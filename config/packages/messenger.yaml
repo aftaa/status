@@ -1,26 +1,34 @@
 framework:
     messenger:
+        # 1. Явно указываем транспорт для упавших сообщений
         failure_transport: failed
 
         transports:
-            # https://symfony.com/doc/current/messenger.html#transport-configuration
             async:
                 dsn: '%env(MESSENGER_TRANSPORT_DSN)%'
+                # Настройка повторов отличная, добавим только начальную задержку
                 retry_strategy:
                     max_retries: 3
-                    multiplier: 2
-            failed: 'doctrine://default?queue_name=failed'
-            # sync: 'sync://'
+                    delay: 1000          # Первая попытка через 1 секунду
+                    multiplier: 2        # Каждая следующая задержка удваивается (1с -> 2с -> 4с)
 
-        default_bus: messenger.bus.default
+            failed: 'doctrine://default?queue_name=failed'
+
+        # 2. Делаем command.bus дефолтной. Запросы (Query) ВСЕГДА нужно вызывать явно через QueryBus
+        default_bus: command.bus
 
         buses:
-            messenger.bus.default: []
+            command.bus:
+                # Отключаем дефолтные мидлвары, если нужно строго контролировать транзакции
+                middleware:
+                    - doctrine_transaction
+
+            query.bus:
+                # Для запросов запрещаем оборачивать всё в транзакции базы данных (прирост скорости)
+                middleware: []
 
         routing:
-            Symfony\Component\Mailer\Messenger\SendEmailMessage: async
-            Symfony\Component\Notifier\Message\ChatMessage: async
-            Symfony\Component\Notifier\Message\SmsMessage: async
+            # Тяжёлые команды — в асинхронную очередь
 
-            # Route your messages to the transports
-            # 'App\Message\YourMessage': async
+            # Рекомендация: если команд станет много, лучше маркировать их интерфейсом
+            'App\Contract\AsyncMessageInterface': async

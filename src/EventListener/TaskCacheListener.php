@@ -7,13 +7,16 @@ use App\Entity\Task;
 use Doctrine\ORM\Event\PostPersistEventArgs;
 use Doctrine\ORM\Event\PostUpdateEventArgs;
 use Doctrine\ORM\Event\PostRemoveEventArgs;
+use Psr\Log\LoggerInterface;
 use Symfony\Contracts\Cache\TagAwareCacheInterface;
 
-class TaskCacheListener
+readonly class TaskCacheListener
 {
     public function __construct(
-        private TagAwareCacheInterface $cache
-    ) {}
+        private TagAwareCacheInterface $cache,
+        private LoggerInterface        $logger,
+    ) {
+    }
 
     public function postPersist(PostPersistEventArgs $args): void
     {
@@ -33,7 +36,14 @@ class TaskCacheListener
     private function invalidate(object $entity): void
     {
         if ($entity instanceof Task) {
-            $this->cache->invalidateTags(['tasks_collection']);
+            try {
+                $this->cache->invalidateTags(['tasks_collection']);
+            } catch (\Throwable $e) {
+                $this->logger->error('Redis error', [
+                    'message' => $e->getMessage(),
+                    'cacheKey' => $entity->getId(),
+                ]);
+            }
         }
     }
 }
