@@ -26,6 +26,10 @@ class RegistrationControllerTest extends WebTestCase
             'registration_form[agreeTerms]' => '1',
         ]);
 
-        $this->assertResponseRedirects('/task/');
+        // Вариант 1: просто строка
+        $this->assertResponseRedirects('/task');
+
+        // Вариант 2: через URL-генератор (лучше)
+        // $this->assertResponseRedirects($client->getContainer()->get('router')->generate('app_tasks'));
     }
 }

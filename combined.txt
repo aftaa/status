@@ -1,0 +1,508 @@
+=== tests/Controller/RegistrationControllerTest.php ===
+<?php
+
+namespace App\Tests\Controller;
+
+use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
+
+class RegistrationControllerTest extends WebTestCase
+{
+    public function testRegistrationPageLoads(): void
+    {
+        $client = static::createClient();
+        $client->request('GET', '/register');
+
+        $this->assertResponseIsSuccessful();
+        $this->assertSelectorExists('form');
+    }
+
+    public function testRegistrationWithValidData(): void
+    {
+        $client = static::createClient();
+        $client->request('GET', '/register');
+
+        $client->submitForm('Register', [
+            'registration_form[email]' => 'test@example.com',
+            'registration_form[plainPassword]' => 'password123',
+            'registration_form[agreeTerms]' => '1',
+        ]);
+
+        $this->assertResponseRedirects('/task/');
+    }
+}
+
+=== tests/Controller/ResetPasswordControllerTest.php ===
+<?php
+
+namespace App\Tests\Controller;
+
+use App\Entity\User;
+use App\Repository\UserRepository;
+use Doctrine\ORM\EntityManagerInterface;
+use Symfony\Bundle\FrameworkBundle\KernelBrowser;
+use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
+use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
+
+class ResetPasswordControllerTest extends WebTestCase
+{
+    private KernelBrowser $client;
+    private EntityManagerInterface $em;
+    private UserRepository $userRepository;
+
+    protected function setUp(): void
+    {
+        $this->client = static::createClient();
+        $container = static::getContainer();
+
+        /** @var EntityManagerInterface $em */
+        $em = $container->get('doctrine')->getManager();
+
+        // 1. Сначала удалить reset_password_requests
+        $em->createQuery('DELETE FROM App\Entity\ResetPasswordRequest')->execute();
+
+        // 2. Потом удалить пользователей
+        $em->createQuery('DELETE FROM App\Entity\User')->execute();
+
+        $em->flush();
+
+        $this->em = $em;
+        $this->userRepository = $container->get(UserRepository::class);
+    }
+
+    public function testResetPasswordController(): void
+    {
+        $this->markTestSkipped('Functional tests require refactoring.');
+
+        $user = (new User())
+            ->setEmail('me@example.com')
+            ->setPassword('a-test-password-that-will-be-changed-later');
+        $this->em->persist($user);
+        $this->em->flush();
+
+        $this->client->request('GET', '/reset-password');
+
+        self::assertResponseIsSuccessful();
+        self::assertPageTitleContains('Reset your password');
+
+        $this->client->submitForm('Send password reset email', [
+            'reset_password_request_form[email]' => 'me@example.com',
+        ]);
+
+        self::assertEmailCount(1);
+
+        self::assertCount(1, $messages = $this->getMailerMessages());
+
+        self::assertEmailAddressContains($messages[0], 'from', 'after@aftaa.ru');
+        self::assertEmailAddressContains($messages[0], 'to', 'me@example.com');
+        self::assertEmailTextBodyContains($messages[0], 'This link will expire in 1 hour.');
+
+        self::assertResponseRedirects('/reset-password/check-email');
+
+        $crawler = $this->client->followRedirect();
+
+        self::assertPageTitleContains('Password Reset Email Sent');
+        self::assertStringContainsString('This link will expire in 1 hour', $crawler->html());
+
+        $email = $messages[0]->toString();
+        preg_match('#(/reset-password/reset/[a-zA-Z0-9]+)#', $email, $resetLink);
+
+        $this->client->request('GET', $resetLink[1]);
+
+        self::assertResponseRedirects('/reset-password/reset');
+
+        $this->client->followRedirect();
+
+        $this->client->submitForm('Reset password', [
+            'change_password_form[plainPassword][first]' => 'newStrongPassword',
+            'change_password_form[plainPassword][second]' => 'newStrongPassword',
+        ]);
+
+        self::assertResponseRedirects('/');
+
+        $user = $this->userRepository->findOneBy(['email' => 'me@example.com']);
+
+        self::assertInstanceOf(User::class, $user);
+
+        /** @var UserPasswordHasherInterface $passwordHasher */
+        $passwordHasher = static::getContainer()->get(UserPasswordHasherInterface::class);
+        self::assertTrue($passwordHasher->isPasswordValid($user, 'newStrongPassword'));
+    }
+}
+
+=== tests/Controller/RegistrationAdvancedControllerTest.php ===
+<?php
+
+namespace App\Tests\Controller;
+
+use App\Repository\UserRepository;
+use Doctrine\ORM\EntityManagerInterface;
+use Symfony\Bridge\Twig\Mime\TemplatedEmail;
+use Symfony\Bundle\FrameworkBundle\KernelBrowser;
+use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
+
+class RegistrationAdvancedControllerTest extends WebTestCase
+{
+    private KernelBrowser $client;
+    private UserRepository $userRepository;
+
+    protected function setUp(): void
+    {
+        $this->client = static::createClient();
+        $container = static::getContainer();
+
+        /** @var EntityManagerInterface $em */
+        $em = $container->get('doctrine')->getManager();
+
+        // 1. Сначала удалить reset_password_requests
+        $em->createQuery('DELETE FROM App\Entity\ResetPasswordRequest')->execute();
+
+        // 2. Потом удалить пользователей
+        $em->createQuery('DELETE FROM App\Entity\User')->execute();
+
+        $em->flush();
+
+        $this->em = $em;
+        $this->userRepository = $container->get(UserRepository::class);
+    }
+
+    public function testRegister(): void
+    {
+        $this->markTestSkipped('Functional tests require refactoring.');
+
+        $this->client->request('GET', '/register');
+        self::assertResponseIsSuccessful();
+        self::assertPageTitleContains('Register');
+
+        $this->client->submitForm('Register', [
+            'registration_form[email]' => 'me@example.com',
+            'registration_form[plainPassword]' => 'password',
+            'registration_form[agreeTerms]' => true,
+        ]);
+
+        self::assertCount(1, $this->userRepository->findAll());
+        self::assertFalse(($user = $this->userRepository->findAll()[0])->isVerified());
+
+        self::assertEmailCount(1);
+
+        self::assertCount(1, $messages = $this->getMailerMessages());
+        self::assertEmailAddressContains($messages[0], 'from', 'after@aftaa.ru');
+        self::assertEmailAddressContains($messages[0], 'to', 'me@example.com');
+        self::assertEmailTextBodyContains($messages[0], 'This link will expire in 1 hour.');
+
+        $this->client->followRedirect();
+        $this->client->loginUser($user);
+
+        /** @var TemplatedEmail $templatedEmail */
+        $templatedEmail = $messages[0];
+        $messageBody = $templatedEmail->getHtmlBody();
+        self::assertIsString($messageBody);
+
+        preg_match('#(http://localhost/verify/email.+)">#', $messageBody, $resetLink);
+
+        $this->client->request('GET', $resetLink[1]);
+        $this->client->followRedirect();
+
+        self::assertTrue(static::getContainer()->get(UserRepository::class)->findAll()[0]->isVerified());
+    }
+}
+
+=== tests/Controller/TaskControllerTest.php ===
+<?php
+
+namespace App\Tests\Controller;
+
+use App\Dto\TaskListQuery;
+use App\Entity\Task;
+use App\Enum\TaskFilter;
+use App\Enum\TaskOrder;
+use App\Enum\TaskSort;
+use App\Enum\TaskStatus;
+use App\Repository\UserRepository;
+use App\ValueObject\Pagination\Limit;
+use App\ValueObject\Pagination\Page;
+use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
+use Symfony\Contracts\Cache\TagAwareCacheInterface;
+
+class TaskControllerTest extends WebTestCase
+{
+    public function testIndex(): void
+    {
+        $client = static::createClient([], [
+            'HTTP_HOST' => 'localhost:8003',
+        ]);
+        $client->request('GET', '/task/');
+
+        $this->assertResponseRedirects('/login');
+    }
+
+    public function testNewTaskPageRequiresLogin(): void
+    {
+        $client = static::createClient([], [
+            'HTTP_HOST' => 'localhost:8003',
+        ]);
+        $client->request('GET', '/task/new');
+
+        $this->assertResponseRedirects('/login');
+    }
+
+    public function testTasksPageWorksWhenLoggedIn(): void
+    {
+        $client = static::createClient();
+
+        $userRepository = static::getContainer()->get(UserRepository::class);
+        $testUser = $userRepository->findOneByEmail('test@example.com');
+
+        if (!$testUser) {
+            $this->markTestSkipped('No test user found. Run seeds first.');
+        }
+
+        $client->loginUser($testUser);
+        $client->request('GET', '/task/');
+        $this->assertResponseIsSuccessful();
+        $this->assertSelectorTextContains('h1', 'Список задач');
+    }
+
+    public function testCacheIsInvalidatedOnTaskCreation(): void
+    {
+        self::bootKernel();
+        $container = static::getContainer();
+
+        /** @var TagAwareCacheInterface $cache */
+        $cache = $container->get('cache.app.taggable');
+
+        /** @var \App\Service\TaskListerInterface $cachedLister */
+        $cachedLister = $container->get(\App\Service\TaskListerInterface::class);
+
+        /** @var \Doctrine\ORM\EntityManagerInterface $entityManager */
+        $entityManager = $container->get(\Doctrine\ORM\EntityManagerInterface::class);
+
+        $query = new TaskListQuery(
+            sort: TaskSort::NAME,
+            order: TaskOrder::ASC,
+            filter: TaskFilter::ALL,
+            page: new Page(1),
+            limit: new Limit(10),
+        );
+        $cachedLister->getFilteredAndSortedTasks($query);
+
+        $cacheKey = 'tasks_list_all_name_asc_p1_l10';
+        $this->assertTrue($cache->getItem($cacheKey)->isHit(), 'Кэш прогрет');
+
+        $task = new Task();
+        $task->setName('Тестовая задача из PHPUnit');
+        $task->setStatus(TaskStatus::NOT_COMPLETED);
+
+        $entityManager->persist($task);
+        $entityManager->flush();
+
+        $cacheItemAfter = $cache->getItem($cacheKey);
+        $this->assertFalse($cacheItemAfter->isHit(), 'Кэш сброшен листенером');
+    }
+}
+
+=== tests/Controller/SecurityControllerTest.php ===
+<?php
+
+namespace App\Tests\Controller;
+
+use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
+
+class SecurityControllerTest extends WebTestCase
+{
+    public function testLoginPageLoads(): void
+    {
+        $client = static::createClient();
+        $client->request('GET', '/login');
+
+        $this->assertResponseIsSuccessful();
+        $this->assertSelectorTextContains('h1', 'Please sign in');
+    }
+
+    public function testLogoutRedirects(): void
+    {
+        $client = static::createClient();
+        $client->request('GET', '/logout');
+
+        $this->assertResponseRedirects();
+    }
+}
+
+=== tests/bootstrap.php ===
+<?php
+
+use Symfony\Component\Dotenv\Dotenv;
+
+require dirname(__DIR__).'/vendor/autoload.php';
+
+if (file_exists(dirname(__DIR__).'/config/bootstrap.php')) {
+    require dirname(__DIR__).'/config/bootstrap.php';
+} elseif (method_exists(Dotenv::class, 'bootEnv')) {
+    new Dotenv()->bootEnv(dirname(__DIR__).'/.env');
+}
+
+=== tests/Service/CachedTaskListerTest.php ===
+<?php
+
+namespace App\Tests\Service;
+
+use App\Dto\PaginatedResult;
+use App\Dto\TaskListQuery;
+use App\Enum\TaskFilter;
+use App\Enum\TaskOrder;
+use App\Enum\TaskSort;
+use App\Service\CachedTaskLister;
+use App\Service\TaskListerInterface;
+use App\ValueObject\Pagination\Limit;
+use App\ValueObject\Pagination\Page;
+use PHPUnit\Framework\TestCase;
+use Symfony\Component\Cache\Adapter\ArrayAdapter;
+use Symfony\Component\Cache\Adapter\TagAwareAdapter;
+
+class CachedTaskListerTest extends TestCase
+{
+    public function testGetFilteredAndSortedTasksUsesCache(): void
+    {
+        $delegateMock = $this->createMock(TaskListerInterface::class);
+        $expectedResult = new PaginatedResult([], 1, 0, 10);
+
+        $delegateMock->expects($this->once())
+            ->method('getFilteredAndSortedTasks')
+            ->willReturn($expectedResult);
+
+        $cache = new TagAwareAdapter(new ArrayAdapter());
+        $cachedLister = new CachedTaskLister($delegateMock, $cache);
+
+        $query = new TaskListQuery(
+            sort: TaskSort::NAME,
+            order: TaskOrder::ASC,
+            filter: TaskFilter::ALL,
+            page: new Page(1),
+            limit: new Limit(10),
+        );
+
+        $result1 = $cachedLister->getFilteredAndSortedTasks($query);
+        $result2 = $cachedLister->getFilteredAndSortedTasks($query);
+
+        $this->assertSame($expectedResult, $result1);
+        $this->assertEquals($expectedResult, $result2);
+    }
+}
+
+=== tests/Service/TaskListerTest.php ===
+<?php
+
+namespace App\Tests\Service;
+
+use App\Dto\PaginatedResult;
+use App\Dto\TaskListQuery;
+use App\Enum\TaskFilter;
+use App\Enum\TaskOrder;
+use App\Enum\TaskSort;
+use App\Factory\SortingStrategyFactory;
+use App\Factory\SpecificationFactory;
+use App\Service\DoctrinePaginator;
+use App\Service\TaskLister;
+use App\Specification\SpecificationInterface;
+use App\Strategy\SortingStrategyInterface;
+use App\Repository\TaskRepository;
+use App\ValueObject\Pagination\Limit;
+use App\ValueObject\Pagination\Page;
+use Doctrine\ORM\QueryBuilder;
+use PHPUnit\Framework\TestCase;
+
+class TaskListerTest extends TestCase
+{
+    public function testApplyFilterAndSorting(): void
+    {
+        $qb = $this->createMock(QueryBuilder::class);
+
+        $repository = $this->createMock(TaskRepository::class);
+        $repository->expects($this->once())
+            ->method('createQueryBuilder')
+            ->willReturn($qb);
+
+        $specification = $this->createMock(SpecificationInterface::class);
+        $specification->expects($this->once())
+            ->method('apply')
+            ->with($qb);
+
+        $specificationFactory = $this->createMock(SpecificationFactory::class);
+        $specificationFactory->expects($this->once())
+            ->method('getSpecification')
+            ->with('completed')
+            ->willReturn($specification);
+
+        $sortingStrategy = $this->createMock(SortingStrategyInterface::class);
+        $sortingStrategy->expects($this->once())
+            ->method('apply')
+            ->with($qb, 'asc');
+
+        $sortingStrategyFactory = $this->createMock(SortingStrategyFactory::class);
+        $sortingStrategyFactory->expects($this->once())
+            ->method('getStrategy')
+            ->with('name')
+            ->willReturn($sortingStrategy);
+
+        $paginator = $this->createMock(DoctrinePaginator::class);
+        $paginator->expects($this->once())
+            ->method('paginate')
+            ->with($qb, new Page(2), new Limit(5))
+            ->willReturn(new PaginatedResult([], 2, 0, 5));
+
+        $query = new TaskListQuery(
+            sort: TaskSort::NAME,
+            order: TaskOrder::ASC,
+            filter: TaskFilter::COMPLETED,
+            page: new Page(2),
+            limit: new Limit(5),
+        );
+
+        $service = new TaskLister($repository, $sortingStrategyFactory, $specificationFactory, $paginator);
+        $result = $service->getFilteredAndSortedTasks($query);
+
+        $this->assertInstanceOf(PaginatedResult::class, $result);
+    }
+}
+
+=== tests/Functional/TaskControllerFunctionalTest.php ===
+<?php
+
+namespace App\Tests\Functional;
+
+use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
+
+class TaskControllerFunctionalTest extends WebTestCase
+{
+    protected function setUp(): void
+    {
+        $this->markTestSkipped('Functional tests require refactoring.');
+    }
+
+    public function testFilterByCompleted(): void
+    {
+        $client = static::createClient([], [
+            'HTTP_HOST' => 'localhost:8003',
+        ]);
+        $client->request('GET', '/task?filter=completed');
+        $this->assertResponseRedirects('/login');
+    }
+
+    public function testFilterByNotCompleted(): void
+    {
+        $client = static::createClient([], [
+            'HTTP_HOST' => 'localhost:8003',
+        ]);
+        $client->request('GET', '/task?filter=not_completed');
+        $this->assertResponseRedirects('/login');
+    }
+
+    public function testSortByNameAsc(): void
+    {
+        $client = static::createClient([], [
+            'HTTP_HOST' => 'localhost:8003',
+        ]);
+        $client->request('GET', '/task?sort=name&order=asc');
+        $this->assertResponseRedirects('/login');
+    }
+}
+

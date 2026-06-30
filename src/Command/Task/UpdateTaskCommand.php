@@ -4,10 +4,10 @@ namespace App\Command\Task;
 
 use App\Dto\TaskDto;
 
-class UpdateTaskCommand
+readonly class UpdateTaskCommand
 {
     public function __construct(
-        public readonly int $id,
-        public readonly TaskDto $dto,
+        public int     $id,
+        public TaskDto $dto,
     ) {}
 }

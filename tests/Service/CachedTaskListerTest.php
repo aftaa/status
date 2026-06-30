@@ -12,6 +12,7 @@ use App\Service\TaskListerInterface;
 use App\ValueObject\Pagination\Limit;
 use App\ValueObject\Pagination\Page;
 use PHPUnit\Framework\TestCase;
+use Psr\Log\LoggerInterface;
 use Symfony\Component\Cache\Adapter\ArrayAdapter;
 use Symfony\Component\Cache\Adapter\TagAwareAdapter;
 
@@ -27,7 +28,17 @@ class CachedTaskListerTest extends TestCase
             ->willReturn($expectedResult);
 
         $cache = new TagAwareAdapter(new ArrayAdapter());
-        $cachedLister = new CachedTaskLister($delegateMock, $cache);
+
+        // Создаём мок для логгера
+        $logger = $this->createMock(LoggerInterface::class);
+        $logger->expects($this->never()) // Логгер не должен вызываться в этом тесте
+        ->method('error');
+
+        $cachedLister = new CachedTaskLister(
+            $delegateMock,
+            $cache,
+            $logger // 👈 Передаём логгер
+        );
 
         $query = new TaskListQuery(
             sort: TaskSort::NAME,
