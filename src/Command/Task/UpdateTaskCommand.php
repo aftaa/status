@@ -7,7 +7,7 @@ use App\Dto\TaskDto;
 readonly class UpdateTaskCommand
 {
     public function __construct(
-        public int     $id,
-        public TaskDto $dto,
+        public int     $taskId,
+        public TaskDto $taskData,
     ) {}
 }

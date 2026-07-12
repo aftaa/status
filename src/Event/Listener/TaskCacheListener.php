@@ -1,12 +1,12 @@
 <?php
 
 // src/EventListener/TaskCacheListener.php
-namespace App\EventListener;
+namespace App\Event\Listener;
 
 use App\Entity\Task;
 use Doctrine\ORM\Event\PostPersistEventArgs;
-use Doctrine\ORM\Event\PostUpdateEventArgs;
 use Doctrine\ORM\Event\PostRemoveEventArgs;
+use Doctrine\ORM\Event\PostUpdateEventArgs;
 use Psr\Log\LoggerInterface;
 use Symfony\Contracts\Cache\TagAwareCacheInterface;
 

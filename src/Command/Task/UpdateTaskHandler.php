@@ -2,9 +2,8 @@
 
 namespace App\Command\Task;
 
-use App\Dto\TaskEvent;
-use App\Entity\Task;
-use App\Event\TaskLoggedEvent;
+use App\Enum\TaskAction;
+use App\Event\TaskChangedEvent;
 use App\Factory\TaskEventFactory;
 use App\Factory\TaskFactory;
 use App\Repository\TaskRepository;
@@ -28,17 +27,17 @@ readonly class UpdateTaskHandler
      */
     public function __invoke(UpdateTaskCommand $command): void
     {
-        $task = $this->taskRepository->find($command->id);
+        $task = $this->taskRepository->find($command->taskId);
         if (!$task) {
             throw new \InvalidArgumentException('Task not found');
         }
 
-        $this->taskFactory->updateFromDto($task, $command->dto);
+        $this->taskFactory->updateFromDto($task, $command->taskData);
         $this->taskRepository->save($task);
 
         $this->eventBus->dispatch(
-            new TaskLoggedEvent(
-                $this->taskEventFactory->createFromTask('edit', $task, $command->dto),
+            new TaskChangedEvent(
+                $this->taskEventFactory->createFromTask(TaskAction::EDIT, $task, $command->taskData),
             ),
         );
     }

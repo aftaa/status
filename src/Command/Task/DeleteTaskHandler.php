@@ -2,12 +2,10 @@
 
 namespace App\Command\Task;
 
-use App\Entity\Task;
-use App\Event\TaskLoggedEvent;
+use App\Enum\TaskAction;
+use App\Event\TaskChangedEvent;
 use App\Factory\TaskEventFactory;
 use App\Repository\TaskRepository;
-use App\Service\TaskEventLogger;
-use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\Messenger\Attribute\AsMessageHandler;
 use Symfony\Component\Messenger\Exception\ExceptionInterface;
 use Symfony\Component\Messenger\MessageBusInterface;
@@ -35,8 +33,8 @@ readonly class DeleteTaskHandler
         }
 
         $this->eventBus->dispatch(
-            new TaskLoggedEvent(
-                $this->taskEventFactory->createFromTask('delete', $task),
+            new TaskChangedEvent(
+                $this->taskEventFactory->createFromTask(TaskAction::DELETE, $task),
             ),
         );
 

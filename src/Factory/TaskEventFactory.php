@@ -5,18 +5,20 @@ namespace App\Factory;
 use App\Dto\TaskDto;
 use App\Dto\TaskEvent;
 use App\Entity\Task;
+use App\Enum\TaskAction;
 
 final class TaskEventFactory
 {
-    public function createFromTask(string $action, Task $task, ?TaskDto $newData = null): TaskEvent
+    public function createFromTask(TaskAction $action, Task $task, ?TaskDto $payload = null): TaskEvent
     {
-        $oldData = $task->toArray();
+        $oldState = $task->toArray();
+        $newState = $payload?->toArray() ?? $oldState;
 
         return new TaskEvent(
-            taskId: $task->getId() ?? 0,
-            action: $action,
-            oldData: $oldData,
-            newData: $newData ? $newData->toArray() : $oldData,
+            taskId: $task->getId(),
+            action: $action->value,
+            oldData: $oldState,
+            newData: $newState,
         );
     }
 }

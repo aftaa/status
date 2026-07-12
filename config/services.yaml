@@ -31,7 +31,7 @@ services:
 
     App\Service\TaskListerInterface: '@App\Service\CachedTaskLister'
 
-    App\EventListener\TaskCacheListener:
+    App\Event\Listener\TaskCacheListener:
         arguments:
             $cache: '@cache.app.taggable'
         tags:

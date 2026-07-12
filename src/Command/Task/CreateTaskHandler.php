@@ -2,11 +2,11 @@
 
 namespace App\Command\Task;
 
-use App\Event\TaskLoggedEvent;
+use App\Enum\TaskAction;
+use App\Event\TaskChangedEvent;
 use App\Factory\TaskEventFactory;
 use App\Factory\TaskFactory;
 use App\Repository\TaskRepository;
-use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\Messenger\Attribute\AsMessageHandler;
 use Symfony\Component\Messenger\Exception\ExceptionInterface;
 use Symfony\Component\Messenger\MessageBusInterface;
@@ -27,11 +27,16 @@ readonly class CreateTaskHandler
      */
     public function __invoke(CreateTaskCommand $command): void
     {
-        $task = $this->taskFactory->createFromDto($command->dto);
+        $task = $this->taskFactory->createFromDto($command->taskData);
         $this->taskRepository->save($task);
 
         $this->eventBus->dispatch(
-            new TaskLoggedEvent($this->taskEventFactory->createFromTask('create', $task))
+            new TaskChangedEvent(
+                $this->taskEventFactory->createFromTask(
+                    TaskAction::CREATE,
+                    $task,
+                ),
+            ),
         );
     }
 }

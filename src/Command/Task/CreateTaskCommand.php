@@ -7,6 +7,6 @@ use App\Dto\TaskDto;
 readonly class CreateTaskCommand
 {
     public function __construct(
-        public TaskDto $dto,
+        public TaskDto $taskData,
     ) {}
 }
