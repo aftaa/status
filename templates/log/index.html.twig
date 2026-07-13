@@ -18,9 +18,9 @@
             </tr>
             </thead>
             <tbody>
-            {% for log in logs %}
+            {% for log in result.items %}
                 <tr>
-                    <td>{{ loop.index + (page - 1) * limit }}</td>
+                    <td>{{ loop.index + (query.page.number - 1) * query.limit.value }}</td>
                     <td>
                         <a href="{{ path('app_log_task', {taskId: log.taskId}) }}">
                             #{{ log.taskId }}
@@ -39,12 +39,12 @@
             </tbody>
         </table>
 
-        {% if totalPages > 1 %}
+        {% if result.totalPages > 1 %}
             <nav>
                 <ul class="pagination">
-                    {% for i in 1..totalPages %}
-                        <li class="page-item {{ i == page ? 'active' : '' }}">
-                            <a class="page-link" href="{{ path('app_logs', {page: i, limit: limit}) }}">{{ i }}</a>
+                    {% for i in 1..result.totalPages %}
+                        <li class="page-item {{ result.currentPage == query.page ? 'active' : '' }}">
+                            <a class="page-link" href="{{ path('app_logs', {page: i, limit: query.limit}) }}">{{ i }}</a>
                         </li>
                     {% endfor %}
                 </ul>

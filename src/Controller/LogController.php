@@ -2,43 +2,46 @@
 
 namespace App\Controller;
 
-use App\Service\TaskEventLogger;
+use App\Factory\LogListQueryFactory;
+use App\Query\Log\GetLogByTaskQuery;
+use App\Query\Log\GetLogListQuery;
+use App\Service\QueryBus;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\Messenger\Exception\ExceptionInterface;
 use Symfony\Component\Routing\Attribute\Route;
 
 class LogController extends AbstractController
 {
     public function __construct(
-        public final TaskEventLogger $logger,
+        private final readonly QueryBus $queryBus,
+        private final readonly LogListQueryFactory $logListQueryFactory,
     ) {
     }
 
+    /**
+     * @throws ExceptionInterface
+     */
     #[Route('/logs', name: 'app_logs')]
     public function index(Request $request): Response
     {
-        $page = max(1, $request->query->getInt('page', 1));
-        $limit = max(100, $request->query->getInt('limit', 20));
-
-        $result = $this->logger->list(
-            page: $page,
-            limit: $limit,
-        );
+        $requestedQuery = $this->logListQueryFactory->fromRequest($request);
+        $result = $this->queryBus->dispatch(new GetLogListQuery($requestedQuery));
 
         return $this->render('log/index.html.twig', [
-            'logs' => $result['items'],
-            'page' => $page,
-            'limit' => $limit,
-            'total' => $result['total'],
-            'totalPages' => ceil($result['total'] / $limit),
+            'result' => $result,
+            'query' => $requestedQuery,
         ]);
     }
 
+    /**
+     * @throws ExceptionInterface
+     */
     #[Route('/log/{taskId}', name: 'app_log_task')]
     public function byTask(int $taskId): Response
     {
-        $logs = $this->logger->findByTaskId($taskId);
+        $logs = $this->queryBus->dispatch(new GetLogByTaskQuery($taskId));
 
         return $this->render('log/task.html.twig', [
             'taskId' => $taskId,

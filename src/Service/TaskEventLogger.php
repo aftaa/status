@@ -2,7 +2,10 @@
 
 namespace App\Service;
 
+use App\Dto\PaginatedResult;
 use App\Dto\TaskEvent;
+use App\ValueObject\Pagination\Page;
+use App\ValueObject\Pagination\Limit;
 use MongoDB\Collection;
 use MongoDB\Client;
 
@@ -37,24 +40,26 @@ final class TaskEventLogger
         )->toArray();
     }
 
-    public function list(mixed $page, mixed $limit): array
+    public function list(Page $page, Limit $limit): PaginatedResult
     {
-        $skip = ($page - 1) * $limit;
+        $skip = ($page->number - 1) * $limit->value;
 
         $items = $this->collection->find(
             [],
             [
                 'skip' => $skip,
-                'limit' => $limit,
+                'limit' => $limit->value,
                 'sort' => ['createdAt' => -1],
-            ],
+            ]
         )->toArray();
 
         $total = $this->collection->countDocuments();
 
-        return [
-            'items' => $items,
-            'total' => $total,
-        ];
+        return new PaginatedResult(
+            items: $items,
+            currentPage: $page->number,
+            totalItems: (int) $total,
+            itemsPerPage: $limit->value,
+        );
     }
 }
