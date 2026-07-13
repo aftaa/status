@@ -1,3 +1,4028 @@
+=== config/packages/doctrine_migrations.yaml ===
+doctrine_migrations:
+    migrations_paths:
+        # namespace is arbitrary but should be different from App\Migrations
+        # as migrations classes should NOT be autoloaded
+        'DoctrineMigrations': '%kernel.project_dir%/migrations'
+    enable_profiler: false
+
+=== config/packages/web_profiler.yaml ===
+when@dev:
+    web_profiler:
+        toolbar: true
+
+    framework:
+        profiler:
+            collect_serializer_data: true
+
+when@test:
+    framework:
+        profiler:
+            collect: false
+            collect_serializer_data: true
+
+=== config/packages/validator.yaml ===
+framework:
+    validation:
+        # Enables validator auto-mapping support.
+        # For instance, basic validation constraints will be inferred from Doctrine's metadata.
+        #auto_mapping:
+        #    App\Entity\: []
+
+when@test:
+    framework:
+        validation:
+            not_compromised_password: false
+
+=== config/packages/cache.yaml ===
+framework:
+    cache:
+        # Unique name of your app: used to compute stable namespaces for cache keys.
+        #prefix_seed: your_vendor_name/app_name
+
+        # The "app" cache stores to the filesystem by default.
+        # The data in this cache should persist between deploys.
+        # Other options include:
+
+        # Redis
+        #app: cache.adapter.redis
+        #default_redis_provider: redis://localhost
+
+        # APCu (not recommended with heavy random-write workloads as memory fragmentation can cause perf issues)
+        #app: cache.adapter.apcu
+
+        # Namespaced pools use the above "app" backend by default
+        #pools:
+            #my.dedicated.cache: null
+
+        app: cache.adapter.redis
+        default_redis_provider: '%env(REDIS_URL)%'
+
+        pools:
+            cache.app.taggable:
+                adapter: cache.adapter.redis_tag_aware
+                provider: cache.default_redis_provider
+
+=== config/packages/doctrine.yaml ===
+doctrine:
+    dbal:
+        url: '%env(resolve:DATABASE_URL)%'
+
+        # IMPORTANT: You MUST configure your server version,
+        # either here or in the DATABASE_URL env var (see .env file)
+        #server_version: '16'
+
+        profiling_collect_backtrace: '%kernel.debug%'
+    orm:
+        validate_xml_mapping: true
+        naming_strategy: doctrine.orm.naming_strategy.underscore
+        identity_generation_preferences:
+            Doctrine\DBAL\Platforms\PostgreSQLPlatform: identity
+        auto_mapping: true
+        mappings:
+            App:
+                type: attribute
+                is_bundle: false
+                dir: '%kernel.project_dir%/src/Entity'
+                prefix: 'App\Entity'
+                alias: App
+
+when@test:
+    doctrine:
+        dbal:
+            # "TEST_TOKEN" is typically set by ParaTest
+            #dbname_suffix: '_test%env(default::TEST_TOKEN)%'
+            url: '%env(DATABASE_URL)%'
+            # Для SQLite в памяти (быстрее, но данные не сохраняются)
+            # driver: 'pdo_sqlite'
+            # memory: true
+
+when@prod:
+    doctrine:
+        orm:
+            query_cache_driver:
+                type: pool
+                pool: doctrine.system_cache_pool
+            result_cache_driver:
+                type: pool
+                pool: doctrine.result_cache_pool
+
+    framework:
+        cache:
+            pools:
+                doctrine.result_cache_pool:
+                    adapter: cache.app
+                doctrine.system_cache_pool:
+                    adapter: cache.system
+
+=== config/packages/nelmio_api_doc.yaml ===
+nelmio_api_doc:
+    documentation:
+        info:
+            title: 'Маячок API'
+            description: 'API для управления статусами'
+            version: '1.0.0'
+        security:
+            - bearerAuth: []
+        components:
+            securitySchemes:
+                bearerAuth:
+                    type: http
+                    scheme: bearer
+                    bearerFormat: JWT
+    areas:
+        default:
+            path_patterns: []
+        api:
+            path_patterns:
+                - ^/api/
+    models:
+        use_jms: false
+        names:
+            - { alias: Status, type: App\Entity\Status, groups: ['status:read'] }
+            - { alias: User, type: App\Entity\User, groups: ['user:read'] }
+
+=== config/packages/framework.yaml ===
+# see https://symfony.com/doc/current/reference/configuration/framework.html
+framework:
+    secret: '%env(APP_SECRET)%'
+
+    # Note that the session will be started ONLY if you read or write from it.
+    session: true
+
+    #esi: true
+    #fragments: true
+    trusted_proxies: '*'
+when@test:
+    framework:
+        test: true
+        session:
+            storage_factory_id: session.storage.factory.mock_file
+        trusted_proxies: '*'
+
+=== config/packages/lexik_jwt_authentication.yaml ===
+lexik_jwt_authentication:
+    secret_key: '%env(resolve:JWT_SECRET_KEY)%'
+    public_key: '%env(resolve:JWT_PUBLIC_KEY)%'
+    pass_phrase: '%env(JWT_PASSPHRASE)%'
+
+=== config/packages/twig.yaml ===
+twig:
+    file_name_pattern: '*.twig'
+    form_themes: ['bootstrap_5_layout.html.twig']
+
+when@test:
+    twig:
+        strict_variables: true
+
+=== config/packages/translation.yaml ===
+framework:
+    default_locale: 'ru'
+    translator:
+        default_path: '%kernel.project_dir%/translations'
+
+=== config/packages/monolog.yaml ===
+monolog:
+    channels:
+        - deprecation # Deprecations are logged in the dedicated "deprecation" channel when it exists
+
+when@dev:
+    monolog:
+        handlers:
+            main:
+                type: stream
+                path: "%kernel.logs_dir%/%kernel.environment%.log"
+                level: debug
+                channels: ["!event"]
+            console:
+                type: console
+                process_psr_3_messages: false
+                channels: ["!event", "!doctrine", "!console"]
+
+when@test:
+    monolog:
+        handlers:
+            main:
+                type: fingers_crossed
+                action_level: error
+                handler: nested
+                excluded_http_codes: [404, 405]
+                channels: ["!event"]
+            nested:
+                type: stream
+                path: "%kernel.logs_dir%/%kernel.environment%.log"
+                level: debug
+
+when@prod:
+    monolog:
+        handlers:
+            main:
+                type: fingers_crossed
+                action_level: error
+                handler: nested
+                excluded_http_codes: [404, 405]
+                channels: ["!deprecation"]
+                buffer_size: 50 # How many messages should be saved? Prevent memory leaks
+            nested:
+                type: stream
+                path: php://stderr
+                level: debug
+                formatter: monolog.formatter.json
+            console:
+                type: console
+                process_psr_3_messages: false
+                channels: ["!event", "!doctrine"]
+            deprecation:
+                type: stream
+                channels: [deprecation]
+                path: php://stderr
+                formatter: monolog.formatter.json
+
+=== config/packages/security.yaml ===
+security:
+    password_hashers:
+        Symfony\Component\Security\Core\User\PasswordAuthenticatedUserInterface: 'auto'
+
+    providers:
+        app_user_provider:
+            entity:
+                class: App\Entity\User
+                property: email
+
+    firewalls:
+        dev:
+            pattern: ^/(_profiler|_wdt|assets|build|api/doc)
+            security: false
+
+        # API — JWT
+        api:
+            pattern: ^/api
+            stateless: true
+            provider: app_user_provider
+            jwt: ~
+            json_login:
+                check_path: api_login
+                username_path: email
+                password_path: password
+                success_handler: lexik_jwt_authentication.handler.authentication_success
+                failure_handler: lexik_jwt_authentication.handler.authentication_failure
+
+        # Веб — сессии
+        main:
+            pattern: ^/(?!api)
+            lazy: true
+            provider: app_user_provider
+            custom_authenticator: App\Security\WebAuthenticator
+            logout:
+                path: app_logout
+            remember_me:
+                secret: '%kernel.secret%'
+                lifetime: 604800
+                path: /
+
+    access_control:
+        - { path: ^/api/login, roles: PUBLIC_ACCESS }
+        - { path: ^/api/doc, roles: PUBLIC_ACCESS }
+        - { path: ^/api, roles: IS_AUTHENTICATED_FULLY }
+        - { path: ^/login, roles: PUBLIC_ACCESS }
+        - { path: ^/register, roles: PUBLIC_ACCESS }
+        - { path: ^/reset-password, roles: PUBLIC_ACCESS }
+        - { path: ^/task, roles: ROLE_USER }
+        - { path: ^/, roles: PUBLIC_ACCESS }
+
+when@test:
+    security:
+        password_hashers:
+            Symfony\Component\Security\Core\User\PasswordAuthenticatedUserInterface:
+                algorithm: auto
+                cost: 4
+                time_cost: 3
+                memory_cost: 10
+
+=== config/packages/reset_password.yaml ===
+symfonycasts_reset_password:
+    request_password_repository: App\Repository\ResetPasswordRequestRepository
+
+=== config/packages/asset_mapper.yaml ===
+framework:
+    asset_mapper:
+        # The paths to make available to the asset mapper.
+        paths:
+            - assets/
+        missing_import_mode: strict
+
+when@prod:
+    framework:
+        asset_mapper:
+            missing_import_mode: warn
+
+=== config/packages/notifier.yaml ===
+framework:
+    notifier:
+        chatter_transports:
+        texter_transports:
+        channel_policy:
+            # use chat/slack, chat/telegram, sms/twilio or sms/nexmo
+            urgent: ['email']
+            high: ['email']
+            medium: ['email']
+            low: ['email']
+        admin_recipients:
+            - { email: admin@example.com }
+
+=== config/packages/ux_turbo.yaml ===
+# Enable stateless CSRF protection for forms and logins/logouts
+framework:
+    csrf_protection:
+        check_header: true
+
+=== config/packages/messenger.yaml ===
+framework:
+    messenger:
+        # 1. Явно указываем транспорт для упавших сообщений
+        failure_transport: failed
+
+        transports:
+            async:
+                dsn: '%env(MESSENGER_TRANSPORT_DSN)%'
+                # Настройка повторов отличная, добавим только начальную задержку
+                retry_strategy:
+                    max_retries: 3
+                    delay: 1000          # Первая попытка через 1 секунду
+                    multiplier: 2        # Каждая следующая задержка удваивается (1с -> 2с -> 4с)
+
+            failed: 'doctrine://default?queue_name=failed'
+
+        # 2. Делаем command.bus дефолтной. Запросы (Query) ВСЕГДА нужно вызывать явно через QueryBus
+        default_bus: command.bus
+
+        buses:
+            event.bus: ~
+
+            command.bus:
+                # Отключаем дефолтные мидлвары, если нужно строго контролировать транзакции
+                middleware:
+                    - doctrine_transaction
+
+            query.bus:
+                # Для запросов запрещаем оборачивать всё в транзакции базы данных (прирост скорости)
+                middleware: []
+
+        routing:
+            # Тяжёлые команды — в асинхронную очередь
+
+            # Рекомендация: если команд станет много, лучше маркировать их интерфейсом
+            'App\Contract\AsyncMessageInterface': async
+
+=== config/packages/mailer.yaml ===
+framework:
+    mailer:
+        dsn: '%env(MAILER_DSN)%'
+
+=== config/packages/csrf.yaml ===
+# Enable stateless CSRF protection for forms and logins/logouts
+framework:
+    form:
+        csrf_protection:
+            token_id: submit
+
+    csrf_protection:
+        stateless_token_ids:
+            - submit
+            - authenticate
+            - logout
+
+=== config/packages/debug.yaml ===
+when@dev:
+    debug:
+        # Forwards VarDumper Data clones to a centralized server allowing to inspect dumps on CLI or in your browser.
+        # See the "server:dump" command to start a new server.
+        dump_destination: "tcp://%env(VAR_DUMPER_SERVER)%"
+
+=== config/packages/routing.yaml ===
+framework:
+    router:
+        # Configure how to generate URLs in non-HTTP contexts, such as CLI commands.
+        # See https://symfony.com/doc/current/routing.html#generating-urls-in-commands
+        default_uri: '%env(DEFAULT_URI)%'
+
+when@prod:
+    framework:
+        router:
+            strict_requirements: null
+
+=== config/packages/property_info.yaml ===
+framework:
+    property_info:
+        with_constructor_extractor: true
+
+=== config/packages/mercure.yaml ===
+mercure:
+    hubs:
+        default:
+            url: '%env(default::MERCURE_URL)%'
+            public_url: '%env(default::MERCURE_PUBLIC_URL)%'
+            jwt:
+                secret: '%env(MERCURE_JWT_SECRET)%'
+                publish: '*'
+
+=== config/routes.yaml ===
+# yaml-language-server: $schema=../vendor/symfony/routing/Loader/schema/routing.schema.json
+
+# This file is the entry point to configure the routes of your app.
+# Methods with the #[Route] attribute are automatically imported.
+# See also https://symfony.com/doc/current/routing.html
+
+# To list all registered routes, run the following command:
+#   bin/console debug:router
+
+controllers:
+    resource: routing.controllers
+
+=== config/routes/web_profiler.yaml ===
+when@dev:
+    web_profiler_wdt:
+        resource: '@WebProfilerBundle/Resources/config/routing/wdt.php'
+        prefix: /_wdt
+
+    web_profiler_profiler:
+        resource: '@WebProfilerBundle/Resources/config/routing/profiler.php'
+        prefix: /_profiler
+
+=== config/routes/nelmio_api_doc.yaml ===
+app.swagger:
+    path: /api/doc.json
+    methods: GET
+    defaults:
+        _controller: nelmio_api_doc.controller.swagger
+        area: api
+
+app.swagger_ui:
+    path: /api/doc
+    controller: nelmio_api_doc.controller.swagger_ui
+    defaults:
+        area: api
+
+=== config/routes/framework.yaml ===
+when@dev:
+    _errors:
+        resource: '@FrameworkBundle/Resources/config/routing/errors.php'
+        prefix: /_error
+
+=== config/routes/security.yaml ===
+_security_logout:
+    resource: security.route_loader.logout
+    type: service
+
+=== config/services.yaml ===
+services:
+    _defaults:
+        autowire: true
+        autoconfigure: true
+
+    App\:
+        resource: '../src/'
+        exclude:
+            - '../src/DependencyInjection/'
+            - '../src/Entity/'
+            - '../src/Kernel.php'
+
+    _instanceof:
+        App\Strategy\SortingStrategyInterface:
+            tags: ['app.sorting_strategy']
+        App\Specification\SpecificationInterface:
+            tags: ['app.task_specification']
+
+    App\Factory\SortingStrategyFactory:
+        arguments:
+            - !tagged_iterator app.sorting_strategy
+    App\Factory\SpecificationFactory:
+        arguments:
+            - !tagged_iterator app.task_specification
+
+    App\Service\CachedTaskLister:
+        decorates: App\Service\TaskLister
+        arguments:
+            $delegate: '@.inner'
+            $cache: '@cache.app.taggable'
+
+    App\Service\TaskListerInterface: '@App\Service\CachedTaskLister'
+
+    App\Event\Listener\TaskCacheListener:
+        arguments:
+            $cache: '@cache.app.taggable'
+        tags:
+            - { name: 'doctrine.event_listener', event: 'postPersist' }
+            - { name: 'doctrine.event_listener', event: 'postUpdate' }
+            - { name: 'doctrine.event_listener', event: 'postRemove' }
+
+    MongoDB\Client:
+        arguments:
+            - '%env(MONGODB_URL)%'
+
+=== src/Controller/IndexController.php ===
+<?php
+
+namespace App\Controller;
+
+use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
+use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\Routing\Attribute\Route;
+
+class IndexController extends AbstractController
+{
+    #[Route('/', name: 'app_index')]
+    public function indexAction(): Response
+    {
+        return $this->render('index/index.html.twig');
+    }
+}
+
+=== src/Controller/ResetPasswordController.php ===
+<?php
+
+namespace App\Controller;
+
+use App\Entity\User;
+use App\Form\ChangePasswordFormType;
+use App\Form\ResetPasswordRequestFormType;
+use Doctrine\ORM\EntityManagerInterface;
+use Symfony\Bridge\Twig\Mime\TemplatedEmail;
+use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
+use Symfony\Component\HttpFoundation\RedirectResponse;
+use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\Mailer\MailerInterface;
+use Symfony\Component\Mime\Address;
+use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
+use Symfony\Component\Routing\Attribute\Route;
+use Symfony\Contracts\Translation\TranslatorInterface;
+use SymfonyCasts\Bundle\ResetPassword\Controller\ResetPasswordControllerTrait;
+use SymfonyCasts\Bundle\ResetPassword\Exception\ResetPasswordExceptionInterface;
+use SymfonyCasts\Bundle\ResetPassword\ResetPasswordHelperInterface;
+
+#[Route('/reset-password')]
+class ResetPasswordController extends AbstractController
+{
+    use ResetPasswordControllerTrait;
+
+    public function __construct(
+        private ResetPasswordHelperInterface $resetPasswordHelper,
+        private EntityManagerInterface $entityManager,
+    ) {
+    }
+
+    /**
+     * Display & process form to request a password reset.
+     */
+    #[Route('', name: 'app_forgot_password_request')]
+    public function request(Request $request, MailerInterface $mailer, TranslatorInterface $translator): Response
+    {
+        $form = $this->createForm(ResetPasswordRequestFormType::class);
+        $form->handleRequest($request);
+
+        if ($form->isSubmitted() && $form->isValid()) {
+            /** @var string $email */
+            $email = $form->get('email')->getData();
+
+            return $this->processSendingPasswordResetEmail($email, $mailer, $translator
+            );
+        }
+
+        return $this->render('reset_password/request.html.twig', [
+            'requestForm' => $form,
+        ]);
+    }
+
+    /**
+     * Confirmation page after a user has requested a password reset.
+     */
+    #[Route('/check-email', name: 'app_check_email')]
+    public function checkEmail(): Response
+    {
+        // Generate a fake token if the user does not exist or someone hit this page directly.
+        // This prevents exposing whether or not a user was found with the given email address or not
+        if (null === ($resetToken = $this->getTokenObjectFromSession())) {
+            $resetToken = $this->resetPasswordHelper->generateFakeResetToken();
+        }
+
+        return $this->render('reset_password/check_email.html.twig', [
+            'resetToken' => $resetToken,
+        ]);
+    }
+
+    /**
+     * Validates and process the reset URL that the user clicked in their email.
+     */
+    #[Route('/reset/{token}', name: 'app_reset_password')]
+    public function reset(Request $request, UserPasswordHasherInterface $passwordHasher, TranslatorInterface $translator, ?string $token = null): Response
+    {
+        if ($token) {
+            // We store the token in session and remove it from the URL, to avoid the URL being
+            // loaded in a browser and potentially leaking the token to 3rd party JavaScript.
+            $this->storeTokenInSession($token);
+
+            return $this->redirectToRoute('app_reset_password');
+        }
+
+        $token = $this->getTokenFromSession();
+
+        if (null === $token) {
+            throw $this->createNotFoundException('No reset password token found in the URL or in the session.');
+        }
+
+        try {
+            /** @var User $user */
+            $user = $this->resetPasswordHelper->validateTokenAndFetchUser($token);
+        } catch (ResetPasswordExceptionInterface $e) {
+            $this->addFlash('reset_password_error', sprintf(
+                '%s - %s',
+                $translator->trans(ResetPasswordExceptionInterface::MESSAGE_PROBLEM_VALIDATE, [], 'ResetPasswordBundle'),
+                $translator->trans($e->getReason(), [], 'ResetPasswordBundle')
+            ));
+
+            return $this->redirectToRoute('app_forgot_password_request');
+        }
+
+        // The token is valid; allow the user to change their password.
+        $form = $this->createForm(ChangePasswordFormType::class);
+        $form->handleRequest($request);
+
+        if ($form->isSubmitted() && $form->isValid()) {
+            // A password reset token should be used only once, remove it.
+            $this->resetPasswordHelper->removeResetRequest($token);
+
+            /** @var string $plainPassword */
+            $plainPassword = $form->get('plainPassword')->getData();
+
+            // Encode(hash) the plain password, and set it.
+            $user->setPassword($passwordHasher->hashPassword($user, $plainPassword));
+            $this->entityManager->flush();
+
+            // The session is cleaned up after the password has been changed.
+            $this->cleanSessionAfterReset();
+
+            return $this->redirectToRoute('app_index');
+        }
+
+        return $this->render('reset_password/reset.html.twig', [
+            'resetForm' => $form,
+        ]);
+    }
+
+    private function processSendingPasswordResetEmail(string $emailFormData, MailerInterface $mailer, TranslatorInterface $translator): RedirectResponse
+    {
+        $user = $this->entityManager->getRepository(User::class)->findOneBy([
+            'email' => $emailFormData,
+        ]);
+
+        // Do not reveal whether a user account was found or not.
+        if (!$user) {
+            return $this->redirectToRoute('app_check_email');
+        }
+
+        try {
+            $resetToken = $this->resetPasswordHelper->generateResetToken($user);
+        } catch (ResetPasswordExceptionInterface $e) {
+            // If you want to tell the user why a reset email was not sent, uncomment
+            // the lines below and change the redirect to 'app_forgot_password_request'.
+            // Caution: This may reveal if a user is registered or not.
+            //
+            // $this->addFlash('reset_password_error', sprintf(
+            //     '%s - %s',
+            //     $translator->trans(ResetPasswordExceptionInterface::MESSAGE_PROBLEM_HANDLE, [], 'ResetPasswordBundle'),
+            //     $translator->trans($e->getReason(), [], 'ResetPasswordBundle')
+            // ));
+
+            return $this->redirectToRoute('app_check_email');
+        }
+
+        $email = (new TemplatedEmail())
+            ->from(new Address('after@aftaa.ru', 'after'))
+            ->to((string) $user->getEmail())
+            ->subject('Your password reset request')
+            ->htmlTemplate('reset_password/email.html.twig')
+            ->context([
+                'resetToken' => $resetToken,
+            ])
+        ;
+
+        $mailer->send($email);
+
+        // Store the token object in session for retrieval in check-email route.
+        $this->setTokenObjectInSession($resetToken);
+
+        return $this->redirectToRoute('app_check_email');
+    }
+}
+
+=== src/Controller/RegistrationController.php ===
+<?php
+
+namespace App\Controller;
+
+use App\Entity\User;
+use App\Form\RegistrationFormType;
+use App\Security\EmailVerifier;
+use Doctrine\ORM\EntityManagerInterface;
+use Symfony\Bridge\Twig\Mime\TemplatedEmail;
+use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
+use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\Mime\Address;
+use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
+use Symfony\Component\Routing\Attribute\Route;
+use Symfony\Contracts\Translation\TranslatorInterface;
+use SymfonyCasts\Bundle\VerifyEmail\Exception\VerifyEmailExceptionInterface;
+
+class RegistrationController extends AbstractController
+{
+    public function __construct(private EmailVerifier $emailVerifier)
+    {
+    }
+
+    #[Route('/register', name: 'app_register')]
+    public function register(Request $request, UserPasswordHasherInterface $userPasswordHasher, EntityManagerInterface $entityManager): Response
+    {
+        $user = new User();
+        $form = $this->createForm(RegistrationFormType::class, $user);
+        $form->handleRequest($request);
+
+        if ($form->isSubmitted() && $form->isValid()) {
+            /** @var string $plainPassword */
+            $plainPassword = $form->get('plainPassword')->getData();
+
+            // encode the plain password
+            $user->setPassword($userPasswordHasher->hashPassword($user, $plainPassword));
+
+            $entityManager->persist($user);
+            $entityManager->flush();
+
+            // generate a signed url and email it to the user
+            $this->emailVerifier->sendEmailConfirmation('app_verify_email', $user,
+                (new TemplatedEmail())
+                    ->from(new Address('after@aftaa.ru', 'after'))
+                    ->to((string) $user->getEmail())
+                    ->subject('Please Confirm your Email')
+                    ->htmlTemplate('registration/confirmation_email.html.twig')
+            );
+
+            // do anything else you need here, like send an email
+
+            return $this->redirectToRoute('app_tasks');
+        }
+
+        return $this->render('registration/register.html.twig', [
+            'registrationForm' => $form,
+        ]);
+    }
+
+    #[Route('/verify/email', name: 'app_verify_email')]
+    public function verifyUserEmail(Request $request, TranslatorInterface $translator): Response
+    {
+        $this->denyAccessUnlessGranted('IS_AUTHENTICATED_FULLY');
+
+        // validate email confirmation link, sets User::isVerified=true and persists
+        try {
+            /** @var User $user */
+            $user = $this->getUser();
+            $this->emailVerifier->handleEmailConfirmation($request, $user);
+        } catch (VerifyEmailExceptionInterface $exception) {
+            $this->addFlash('verify_email_error', $translator->trans($exception->getReason(), [], 'VerifyEmailBundle'));
+
+            return $this->redirectToRoute('app_register');
+        }
+
+        // @TODO Change the redirect on success and handle or remove the flash message in your templates
+        $this->addFlash('success', 'Your email address has been verified.');
+
+        return $this->redirectToRoute('app_register');
+    }
+}
+
+=== src/Controller/TaskController.php ===
+<?php
+
+namespace App\Controller;
+
+use App\Command\Task\CreateTaskCommand;
+use App\Command\Task\DeleteTaskCommand;
+use App\Command\Task\UpdateTaskCommand;
+use App\Factory\TaskDtoFactory;
+use App\Factory\TaskListQueryFactory;
+use App\Form\TaskType;
+use App\Query\Task\GetTaskForEditQuery;
+use App\Query\Task\GetTaskListQuery;
+use App\Service\QueryBus;
+use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
+use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\Messenger\Exception\ExceptionInterface;
+use Symfony\Component\Messenger\MessageBusInterface;
+use Symfony\Component\Routing\Attribute\Route;
+
+class TaskController extends AbstractController
+{
+    public function __construct(
+        private readonly QueryBus            $queryBus,
+        private readonly MessageBusInterface $commandBus,
+        private readonly MessageBusInterface $messageBus,
+    ) {
+    }
+
+    /**
+     * @throws ExceptionInterface
+     */
+    #[Route('/task', name: 'app_tasks')]
+    public function index(
+        Request              $request,
+        TaskListQueryFactory $queryFactory,
+        QueryBus             $queryBus,
+    ): Response {
+        $query = $queryFactory->fromRequest($request);
+        $result = $queryBus->dispatch(new GetTaskListQuery($query));
+
+        return $this->render('task/index.html.twig', [
+            'result' => $result,
+            'query' => $query,
+        ]);
+    }
+
+    /**
+     * @throws ExceptionInterface
+     */
+    #[Route('/task/new', name: 'app_task_new', methods: ['GET', 'POST'])]
+    public function new(Request $request): Response
+    {
+        $form = $this->createForm(TaskType::class);
+        $form->handleRequest($request);
+
+        if ($form->isSubmitted() && $form->isValid()) {
+            $taskData = $form->getData();
+            $this->commandBus->dispatch(new CreateTaskCommand($taskData));
+
+            $this->addFlash('success', 'Задача создана!');
+            return $this->redirectToRoute('app_tasks');
+        }
+
+        return $this->render('task/new.html.twig', [
+            'form' => $form,
+        ]);
+    }
+
+    /**
+     * @throws ExceptionInterface
+     */
+    #[Route('/{id}/edit', name: 'app_task_edit', methods: ['GET'])]
+    public function edit(int $id): Response
+    {
+        $taskDto = $this->queryBus->dispatch(new GetTaskForEditQuery($id));
+
+        $form = $this->createForm(TaskType::class, $taskDto);
+
+        return $this->render('task/edit.html.twig', [
+            'form' => $form,
+            'taskId' => $id,
+        ]);
+    }
+
+    /**
+     * @throws ExceptionInterface
+     */
+    #[Route('/{id}/edit', name: 'app_task_update', methods: ['POST'])]
+    public function update(Request $request, int $id, TaskDtoFactory $taskDtoFactory): Response
+    {
+        $taskData = $taskDtoFactory->createFromRequest($request);
+        $form = $this->createForm(TaskType::class, $taskData);
+        $form->handleRequest($request);
+
+        if ($form->isSubmitted() && $form->isValid()) {
+            $this->commandBus->dispatch(new UpdateTaskCommand($id, $taskData));
+
+            $this->addFlash('success', 'Задача обновлена!');
+            return $this->redirectToRoute('app_tasks');
+        }
+
+        return $this->render('task/edit.html.twig', [
+            'form' => $form,
+            'taskId' => $id,
+        ]);
+    }
+
+    /**
+     * @throws ExceptionInterface
+     */
+    #[Route('/{id}/delete', name: 'app_task_delete', methods: ['POST'])]
+    public function delete(Request $request, int $id): Response
+    {
+        $tokenId = 'delete' . $id;
+        if (!$this->isCsrfTokenValid($tokenId, $request->getPayload()->get('_token'))) {
+            throw $this->createAccessDeniedException('Invalid CSRF token');
+        }
+
+        $commandBus->dispatch(new DeleteTaskCommand($id));
+
+        $this->addFlash('success', 'Задача удалена!');
+        return $this->redirectToRoute('app_tasks');
+    }
+}
+
+=== src/Controller/SecurityController.php ===
+<?php
+
+namespace App\Controller;
+
+use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
+use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\Routing\Attribute\Route;
+use Symfony\Component\Security\Http\Authentication\AuthenticationUtils;
+
+class SecurityController extends AbstractController
+{
+    #[Route(path: '/login', name: 'app_login')]
+    public function login(AuthenticationUtils $authenticationUtils): Response
+    {
+        // if ($this->getUser()) {
+        //     return $this->redirectToRoute('target_path');
+        // }
+
+        // get the login error if there is one
+        $error = $authenticationUtils->getLastAuthenticationError();
+        // last username entered by the user
+        $lastUsername = $authenticationUtils->getLastUsername();
+
+        return $this->render('security/login.html.twig', ['last_username' => $lastUsername, 'error' => $error]);
+    }
+
+    #[Route(path: '/logout', name: 'app_logout')]
+    public function logout(): void
+    {
+        throw new \LogicException('This method can be blank - it will be intercepted by the logout key on your firewall.');
+    }
+}
+
+=== src/Controller/Api/StatusController.php ===
+<?php
+
+namespace App\Controller\Api;
+
+use App\Repository\StatusRepository;
+use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
+use Symfony\Component\HttpFoundation\JsonResponse;
+use Symfony\Component\Routing\Attribute\Route;
+use OpenApi\Attributes as OA;
+
+#[Route('/api/statuses', name: 'api_statuses_')]
+class StatusController extends AbstractController
+{
+    public function __construct(private StatusRepository $repository) {}
+
+    #[OA\Get(
+        path: '/api/statuses',
+        description: 'Получить список всех статусов',
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: 'Список статусов',
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(
+                            property: 'data',
+                            type: 'array',
+                            items: new OA\Items(ref: '#/components/schemas/Status')
+                        ),
+                        new OA\Property(property: 'total', type: 'integer', example: 5)
+                    ]
+                )
+            )
+        ]
+    )]
+    #[Route('', name: 'list', methods: ['GET'])]
+    public function list(): JsonResponse
+    {
+        $statuses = $this->repository->findAll();
+
+        return $this->json(
+            ['data' => $statuses, 'total' => count($statuses)],
+            context: ['groups' => 'status:read']
+        );
+    }
+
+    #[OA\Get(
+        path: '/api/statuses/{slug}',
+        description: 'Получить статус по slug',
+        parameters: [
+            new OA\Parameter(
+                name: 'slug',
+                description: 'Slug статуса (например, svoboden)',
+                in: 'path',
+                required: true,
+                schema: new OA\Schema(type: 'string')
+            )
+        ],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: 'Данные статуса',
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(
+                            property: 'data',
+                            ref: '#/components/schemas/Status'
+                        )
+                    ]
+                )
+            ),
+            new OA\Response(response: 404, description: 'Статус не найден')
+        ]
+    )]
+    #[Route('/{slug}', name: 'show', methods: ['GET'])]
+    public function show(string $slug): JsonResponse
+    {
+        $status = $this->repository->findOneBy(['slug' => $slug]);
+
+        if (!$status) {
+            return $this->json(['error' => 'Status not found'], 404);
+        }
+
+        return $this->json(
+            ['data' => $status],
+            context: ['groups' => 'status:read']
+        );
+    }
+}
+
+=== src/Controller/Api/LoginController.php ===
+<?php
+
+namespace App\Controller\Api;
+
+use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
+use Symfony\Component\Routing\Attribute\Route;
+use OpenApi\Attributes as OA;
+
+class LoginController extends AbstractController
+{
+    #[OA\Post(
+        path: '/api/login',
+        description: 'Получить JWT-токен',
+        requestBody: new OA\RequestBody(
+            description: 'Учетные данные',
+            required: true,
+            content: new OA\JsonContent(
+                required: ['email', 'password'],
+                properties: [
+                    new OA\Property(property: 'email', type: 'string', example: 'after@ya.ru'),
+                    new OA\Property(property: 'password', type: 'string', example: 'darkside')
+                ]
+            )
+        ),
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: 'JWT-токен',
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(property: 'token', type: 'string')
+                    ]
+                )
+            ),
+            new OA\Response(response: 401, description: 'Неверные учетные данные')
+        ]
+    )]
+    #[Route('/api/login', name: 'api_login', methods: ['POST'])]
+    public function login(): never
+    {
+        throw new \LogicException('This should never be reached!');
+    }
+}
+
+=== src/Controller/Api/UserController.php ===
+<?php
+
+namespace App\Controller\Api;
+
+use App\Repository\UserRepository;
+use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
+use Symfony\Component\HttpFoundation\JsonResponse;
+use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpFoundation\StreamedResponse;
+use Symfony\Component\Mercure\HubInterface;
+use Symfony\Component\Routing\Attribute\Route;
+use OpenApi\Attributes as OA;
+
+#[Route('/api/users', name: 'api_users_')]
+class UserController extends AbstractController
+{
+    public function __construct(
+        private readonly UserRepository $userRepository,
+        private readonly HubInterface   $hub,
+    ) {}
+
+    #[OA\Get(
+        path: '/api/users/search',
+        description: 'Поиск пользователя по email или имени',
+        security: [['bearerAuth' => []]],
+        parameters: [
+            new OA\Parameter(
+                name: 'q',
+                description: 'Строка поиска (минимум 2 символа)',
+                in: 'query',
+                required: true,
+                schema: new OA\Schema(type: 'string', example: 'after')
+            )
+        ],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: 'Результаты поиска',
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(
+                            property: 'users',
+                            type: 'array',
+                            items: new OA\Items(ref: '#/components/schemas/User')
+                        )
+                    ]
+                )
+            ),
+            new OA\Response(response: 400, description: 'Слишком короткий запрос')
+        ]
+    )]
+    #[Route('/search', name: 'search', methods: ['GET'])]
+    public function search(Request $request): JsonResponse
+    {
+        $query = $request->query->get('q', '');
+
+        if (strlen($query) < 2) {
+            return $this->json(['error' => 'Query must be at least 2 characters'], 400);
+        }
+
+        $users = $this->userRepository->search($query);
+
+        return $this->json(
+            ['users' => $users],
+            context: ['groups' => 'user:read']
+        );
+    }
+
+    #[Route('/{id}/status/stream', name: 'status_stream', methods: ['GET'])]
+    public function statusStream(int $id): StreamedResponse
+    {
+        $user = $this->userRepository->find($id);
+        if (!$user) {
+            throw $this->createNotFoundException();
+        }
+
+        $topic = 'user/' . $id . '/status';
+        $url = $this->hub->getUrl($topic);
+
+        return new StreamedResponse(function () use ($url) {
+            readfile($url);
+        }, 200, [
+            'Content-Type' => 'text/event-stream',
+            'Cache-Control' => 'no-cache',
+            'X-Accel-Buffering' => 'no',
+        ]);
+    }
+
+    #[OA\Get(
+        path: '/api/users/{id}',
+        description: 'Получить данные пользователя по ID',
+        security: [['bearerAuth' => []]],
+        parameters: [
+            new OA\Parameter(
+                name: 'id',
+                description: 'ID пользователя',
+                in: 'path',
+                required: true,
+                schema: new OA\Schema(type: 'integer', example: 1)
+            )
+        ],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: 'Данные пользователя',
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(
+                            property: 'data',
+                            ref: '#/components/schemas/User'
+                        )
+                    ]
+                )
+            ),
+            new OA\Response(response: 404, description: 'Пользователь не найден')
+        ]
+    )]
+    #[Route('/{id}', name: 'show', requirements: ['id' => '\d+'], methods: ['GET'])]
+    public function show(int $id): JsonResponse
+    {
+        $user = $this->userRepository->find($id);
+
+        if (!$user) {
+            return $this->json(['error' => 'User not found'], 404);
+        }
+
+        return $this->json(
+            ['data' => $user],
+            context: ['groups' => ['user:read', 'status:read']]
+        );
+    }
+}
+
+=== src/Controller/Api/UserStatusController.php ===
+<?php
+
+namespace App\Controller\Api;
+
+use App\Entity\User;
+use App\Repository\StatusRepository;
+use Doctrine\ORM\EntityManagerInterface;
+use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
+use Symfony\Component\HttpFoundation\JsonResponse;
+use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\Mercure\HubInterface;
+use Symfony\Component\Mercure\Update;
+use Symfony\Component\Routing\Attribute\Route;
+use Symfony\Component\Security\Http\Attribute\CurrentUser;
+use OpenApi\Attributes as OA;
+
+#[Route('/api/me', name: 'api_me_')]
+class UserStatusController extends AbstractController
+{
+    public function __construct(
+        private StatusRepository $statusRepository,
+        private EntityManagerInterface $em,
+        private HubInterface $hub,
+    ) {}
+
+    #[OA\Get(
+        path: '/api/me/status',
+        description: 'Получить текущий статус',
+        security: [['bearerAuth' => []]],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: 'Текущий статус',
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(
+                            property: 'status',
+                            ref: '#/components/schemas/Status',
+                            nullable: true
+                        )
+                    ]
+                )
+            )
+        ]
+    )]
+    #[Route('/status', name: 'get_status', methods: ['GET'])]
+    public function getStatus(#[CurrentUser] User $user): JsonResponse
+    {
+        return $this->json(
+            ['status' => $user->getCurrentStatus()],
+            context: ['groups' => 'status:read']
+        );
+    }
+
+    #[OA\Put(
+        path: '/api/me/status',
+        description: 'Обновить текущий статус',
+        security: [['bearerAuth' => []]],
+        requestBody: new OA\RequestBody(
+            required: true,
+            content: new OA\JsonContent(
+                required: ['status'],
+                properties: [
+                    new OA\Property(
+                        property: 'status',
+                        description: 'Slug статуса',
+                        type: 'string',
+                        example: 'svoboden'
+                    )
+                ]
+            )
+        ),
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: 'Статус обновлён',
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(property: 'message', type: 'string', example: 'Status updated'),
+                        new OA\Property(
+                            property: 'status',
+                            ref: '#/components/schemas/Status'
+                        )
+                    ]
+                )
+            ),
+            new OA\Response(response: 400, description: 'Не указан slug'),
+            new OA\Response(response: 404, description: 'Статус не найден')
+        ]
+    )]
+    #[Route('/status', name: 'update_status', methods: ['PUT'])]
+    public function updateStatus(
+        Request $request,
+        #[CurrentUser] User $user,
+    ): JsonResponse {
+        $data = json_decode($request->getContent(), true);
+        $statusSlug = $data['status'] ?? null;
+
+        if (!$statusSlug) {
+            return $this->json(['error' => 'Status slug is required'], 400);
+        }
+
+        $status = $this->statusRepository->findOneBy(['slug' => $statusSlug]);
+
+        if (!$status) {
+            return $this->json(['error' => 'Status not found'], 404);
+        }
+
+        $user->setCurrentStatus($status);
+        $this->em->flush();
+
+        $update = new Update(
+            topics: ['user/' . $user->getId() . '/status'],
+            data: json_encode([
+                'userId' => $user->getId(),
+                'status' => [
+                    'slug' => $status->getSlug(),
+                    'name' => $status->getName(),
+                    'color' => $status->getColor(),
+                    'bgColor' => $status->getBgColor(),
+                    'iconUrl' => $status->getIconUrl(),
+                ]
+            ])
+        );
+        $this->hub->publish($update);
+
+        return $this->json([
+            'message' => 'Status updated',
+            'status' => $status,
+        ], context: ['groups' => 'status:read']);
+    }
+
+    #[OA\Delete(
+        path: '/api/me/status',
+        description: 'Удалить текущий статус',
+        security: [['bearerAuth' => []]],
+        responses: [
+            new OA\Response(response: 200, description: 'Статус удалён'),
+            new OA\Response(response: 404, description: 'Статус не был установлен')
+        ]
+    )]
+    #[Route('/status', name: 'delete_status', methods: ['DELETE'])]
+    public function deleteStatus(#[CurrentUser] User $user): JsonResponse
+    {
+        if (!$user->getCurrentStatus()) {
+            return $this->json(['error' => 'No status to delete'], 404);
+        }
+
+        $user->setCurrentStatus(null);
+        $this->em->flush();
+
+        return $this->json(['message' => 'Status deleted']);
+    }
+}
+
+=== src/Factory/TaskEventFactory.php ===
+<?php
+
+namespace App\Factory;
+
+use App\Dto\TaskDto;
+use App\Dto\TaskEvent;
+use App\Entity\Task;
+use App\Enum\TaskAction;
+
+final class TaskEventFactory
+{
+    public function createFromTask(TaskAction $action, Task $task, ?TaskDto $payload = null): TaskEvent
+    {
+        $oldState = $task->toArray();
+        $newState = $payload?->toArray() ?? $oldState;
+
+        return new TaskEvent(
+            taskId: $task->getId(),
+            action: $action->value,
+            oldData: $oldState,
+            newData: $newState,
+        );
+    }
+}
+
+=== src/Factory/SpecificationFactory.php ===
+<?php
+
+namespace App\Factory;
+
+use App\Specification\SpecificationInterface;
+use Symfony\Component\DependencyInjection\Attribute\TaggedIterator;
+
+class SpecificationFactory
+{
+    private array $specifications = [];
+
+    public function __construct(
+        #[TaggedIterator('app.task_specification')] iterable $specifications
+    ) {
+        foreach ($specifications as $specification) {
+            $this->specifications[$specification->getKey()] = $specification;
+        }
+    }
+
+    public function getSpecification(?string $key): ?SpecificationInterface
+    {
+        if ($key === null || $key === 'all') {
+            return null;
+        }
+
+        return $this->specifications[$key] ?? null;
+    }
+}
+
+=== src/Factory/SortingStrategyFactory.php ===
+<?php
+
+namespace App\Factory;
+
+use App\Strategy\SortingStrategyInterface;
+
+class SortingStrategyFactory
+{
+    /**
+     * @var SortingStrategyInterface[]
+     */
+    private array $strategies = [];
+
+    public function __construct(iterable $strategies)
+    {
+        foreach ($strategies as $strategy) {
+            $this->strategies[$strategy->getKey()] = $strategy;
+        }
+    }
+
+    public function getStrategy(string $type): SortingStrategyInterface
+    {
+        return $this->strategies[$type] ?? $this->strategies['created_at'];
+    }
+}
+
+=== src/Factory/TaskDtoFactory.php ===
+<?php
+
+namespace App\Factory;
+
+use App\Dto\TaskDto;
+use App\Entity\Task;
+use App\Enum\TaskStatus;
+use Symfony\Component\HttpFoundation\Request;
+
+class TaskDtoFactory
+{
+    public function createFromRequest(Request $request): TaskDto
+    {
+        // Для POST-данных (из формы)
+        $payload = $request->getPayload();
+
+        return new TaskDto(
+            name: $payload->get('name') ?? '',
+            status: TaskStatus::tryFrom($payload->get('status')) ?? TaskStatus::NOT_COMPLETED,
+        );
+    }
+
+    public function createFromEntity(Task $task): TaskDto
+    {
+        return new TaskDto(
+            name: $task->getName() ?? '',
+            status: $task->getStatus(),
+        );
+    }
+
+    public function createEmpty(): TaskDto
+    {
+        return new TaskDto();
+    }
+}
+
+=== src/Factory/TaskListQueryFactory.php ===
+<?php
+
+namespace App\Factory;
+
+use App\Dto\TaskListQuery;
+use App\Enum\TaskFilter;
+use App\Enum\TaskOrder;
+use App\Enum\TaskSort;
+use App\ValueObject\Pagination\Limit;
+use App\ValueObject\Pagination\Page;
+use Symfony\Component\HttpFoundation\Request;
+
+final class TaskListQueryFactory
+{
+    final public const int PAGE = 1;
+    final public const int LIMIT = 20;
+
+    public function fromRequest(Request $request): TaskListQuery
+    {
+        return new TaskListQuery(
+            sort:   TaskSort::tryFrom($request->query->get('sort', TaskSort::DEFAULT->value)),
+            order:  TaskOrder::tryFrom($request->query->get('order', TaskOrder::DEFAULT->value)),
+            filter: TaskFilter::tryFrom($request->query->get('filter', TaskFilter::DEFAULT->value)),
+            page:   new Page($request->query->get('page', self::PAGE)),
+            limit:  new Limit($request->query->get('limit', self::LIMIT)),
+        );
+    }
+}
+
+=== src/Factory/TaskFactory.php ===
+<?php
+
+namespace App\Factory;
+
+use App\Dto\TaskDto;
+use App\Entity\Task;
+
+final class TaskFactory
+{
+    public function createFromDto(TaskDto $dto): Task
+    {
+        $task = new Task();
+        $task->setName($dto->name);
+        $task->setStatus($dto->status);
+
+        return $task;
+    }
+
+    public function updateFromDto(Task $task, TaskDto $dto): void
+    {
+        $task->setName($dto->name);
+        $task->setStatus($dto->status);
+    }
+}
+
+=== src/Form/TaskType.php ===
+<?php
+
+namespace App\Form;
+
+use App\Dto\TaskDto;
+use App\Entity\Task;
+use App\Enum\TaskStatus;
+use Symfony\Component\Form\AbstractType;
+use Symfony\Component\Form\Extension\Core\Type\CheckboxType;
+use Symfony\Component\Form\Extension\Core\Type\EnumType;
+use Symfony\Component\Form\Extension\Core\Type\TextType;
+use Symfony\Component\Form\FormBuilderInterface;
+use Symfony\Component\OptionsResolver\OptionsResolver;
+
+class TaskType extends AbstractType
+{
+    public function buildForm(FormBuilderInterface $builder, array $options): void
+    {
+        $builder
+            ->add('name')
+            ->add('status', EnumType::class, ['class' => TaskStatus::class])
+//            ->add('is_completed', CheckboxType::class, [
+//                'label_attr' => ['class' => 'checkbox-switch'],
+//                'required' => false,
+//            ])
+//            ->add('created_at', null, [
+//                'widget' => 'single_text',
+//            ])
+            ->add('name', TextType::class, [
+                'label' => 'Название задачи',
+                'attr' => ['placeholder' => 'Введите название'],
+            ])
+            ->add('status', EnumType::class, [
+                'class' => TaskStatus::class,
+                'label' => 'Статус',
+            ]);
+        ;
+    }
+
+    public function configureOptions(OptionsResolver $resolver): void
+    {
+        $resolver->setDefaults([
+            //'data_class' => Task::class,
+            'data_class' => TaskDto::class,
+        ]);
+    }
+}
+
+=== src/Form/ResetPasswordRequestFormType.php ===
+<?php
+
+namespace App\Form;
+
+use Symfony\Component\Form\AbstractType;
+use Symfony\Component\Form\Extension\Core\Type\EmailType;
+use Symfony\Component\Form\FormBuilderInterface;
+use Symfony\Component\OptionsResolver\OptionsResolver;
+use Symfony\Component\Validator\Constraints\NotBlank;
+
+class ResetPasswordRequestFormType extends AbstractType
+{
+    public function buildForm(FormBuilderInterface $builder, array $options): void
+    {
+        $builder
+            ->add('email', EmailType::class, [
+                'attr' => ['autocomplete' => 'email'],
+                'constraints' => [
+                    new NotBlank(
+                        message: 'Please enter your email',
+                    ),
+                ],
+            ])
+        ;
+    }
+
+    public function configureOptions(OptionsResolver $resolver): void
+    {
+        $resolver->setDefaults([]);
+    }
+}
+
+=== src/Form/RegistrationFormType.php ===
+<?php
+
+namespace App\Form;
+
+use App\Entity\User;
+use Symfony\Component\Form\AbstractType;
+use Symfony\Component\Form\Extension\Core\Type\CheckboxType;
+use Symfony\Component\Form\Extension\Core\Type\PasswordType;
+use Symfony\Component\Form\Extension\Core\Type\TextType;
+use Symfony\Component\Form\FormBuilderInterface;
+use Symfony\Component\OptionsResolver\OptionsResolver;
+use Symfony\Component\Validator\Constraints\IsTrue;
+use Symfony\Component\Validator\Constraints\Length;
+use Symfony\Component\Validator\Constraints\NotBlank;
+
+class RegistrationFormType extends AbstractType
+{
+    public function buildForm(FormBuilderInterface $builder, array $options): void
+    {
+        $builder
+            ->add('email')
+            ->add('displayName', TextType::class)
+            ->add('agreeTerms', CheckboxType::class, [
+                'mapped' => false,
+                'constraints' => [
+                    new IsTrue(
+                        message: 'You should agree to our terms.',
+                    ),
+                ],
+            ])
+            ->add('plainPassword', PasswordType::class, [
+                // instead of being set onto the object directly,
+                // this is read and encoded in the controller
+                'mapped' => false,
+                'attr' => ['autocomplete' => 'new-password'],
+                'constraints' => [
+                    new NotBlank(
+                        message: 'Please enter a password',
+                    ),
+                    new Length(
+                        min: 6,
+                        minMessage: 'Your password should be at least {{ limit }} characters',
+                        // max length allowed by Symfony for security reasons
+                        max: 4096,
+                    ),
+                ],
+            ])
+        ;
+    }
+
+    public function configureOptions(OptionsResolver $resolver): void
+    {
+        $resolver->setDefaults([
+            'data_class' => User::class,
+        ]);
+    }
+}
+
+=== src/Form/ChangePasswordFormType.php ===
+<?php
+
+namespace App\Form;
+
+use Symfony\Component\Form\AbstractType;
+use Symfony\Component\Form\Extension\Core\Type\PasswordType;
+use Symfony\Component\Form\Extension\Core\Type\RepeatedType;
+use Symfony\Component\Form\FormBuilderInterface;
+use Symfony\Component\OptionsResolver\OptionsResolver;
+use Symfony\Component\Validator\Constraints\Length;
+use Symfony\Component\Validator\Constraints\NotBlank;
+use Symfony\Component\Validator\Constraints\NotCompromisedPassword;
+use Symfony\Component\Validator\Constraints\PasswordStrength;
+
+class ChangePasswordFormType extends AbstractType
+{
+    public function buildForm(FormBuilderInterface $builder, array $options): void
+    {
+        $builder
+            ->add('plainPassword', RepeatedType::class, [
+                'type' => PasswordType::class,
+                'options' => [
+                    'attr' => [
+                        'autocomplete' => 'new-password',
+                    ],
+                ],
+                'first_options' => [
+                    'constraints' => [
+                        new NotBlank(
+                            message: 'Please enter a password',
+                        ),
+                        new Length(
+                            min: 12,
+                            minMessage: 'Your password should be at least {{ limit }} characters',
+                            // max length allowed by Symfony for security reasons
+                            max: 4096,
+                        ),
+                        new PasswordStrength(),
+                        new NotCompromisedPassword(),
+                    ],
+                    'label' => 'New password',
+                ],
+                'second_options' => [
+                    'label' => 'Repeat Password',
+                ],
+                'invalid_message' => 'The password fields must match.',
+                // Instead of being set onto the object directly,
+                // this is read and encoded in the controller
+                'mapped' => false,
+            ])
+        ;
+    }
+
+    public function configureOptions(OptionsResolver $resolver): void
+    {
+        $resolver->setDefaults([]);
+    }
+}
+
+=== src/Event/Listener/TaskCacheListener.php ===
+<?php
+
+// src/EventListener/TaskCacheListener.php
+namespace App\Event\Listener;
+
+use App\Entity\Task;
+use Doctrine\ORM\Event\PostPersistEventArgs;
+use Doctrine\ORM\Event\PostRemoveEventArgs;
+use Doctrine\ORM\Event\PostUpdateEventArgs;
+use Psr\Log\LoggerInterface;
+use Symfony\Contracts\Cache\TagAwareCacheInterface;
+
+readonly class TaskCacheListener
+{
+    public function __construct(
+        private TagAwareCacheInterface $cache,
+        private LoggerInterface        $logger,
+    ) {
+    }
+
+    public function postPersist(PostPersistEventArgs $args): void
+    {
+        $this->invalidate($args->getObject());
+    }
+
+    public function postUpdate(PostUpdateEventArgs $args): void
+    {
+        $this->invalidate($args->getObject());
+    }
+
+    public function postRemove(PostRemoveEventArgs $args): void
+    {
+        $this->invalidate($args->getObject());
+    }
+
+    private function invalidate(object $entity): void
+    {
+        if ($entity instanceof Task) {
+            try {
+                $this->cache->invalidateTags(['tasks_collection']);
+            } catch (\Throwable $e) {
+                $this->logger->error('Redis error', [
+                    'message' => $e->getMessage(),
+                    'cacheKey' => $entity->getId(),
+                ]);
+            }
+        }
+    }
+}
+
+=== src/Event/Handler/TaskCreatedEventHandler.php ===
+<?php
+
+namespace App\Event\Handler;
+
+use App\Event\TaskChangedEvent;
+use App\Service\TaskEventLogger;
+use Symfony\Component\Messenger\Attribute\AsMessageHandler;
+
+#[AsMessageHandler('event.bus')]
+readonly class TaskCreatedEventHandler
+{
+    public function __construct(public final TaskEventLogger $logger)
+    {
+
+    }
+
+    public function __invoke(TaskChangedEvent $event): void
+    {
+        $this->logger->log($event->event);
+    }
+}
+
+=== src/Event/TaskCreatedEvent.php ===
+<?php
+
+namespace App\Event;
+
+final readonly class TaskCreatedEvent
+{
+    public function __construct(
+
+    ) { }
+}
+
+=== src/Event/TaskChangedEvent.php ===
+<?php
+
+namespace App\Event;
+
+use App\Contract\AsyncMessageInterface;
+use App\Dto\TaskEvent;
+
+readonly class TaskChangedEvent implements AsyncMessageInterface
+{
+    public function __construct(public final TaskEvent $event)
+    {
+
+    }
+}
+
+=== src/Service/TaskEventLogger.php ===
+<?php
+
+namespace App\Service;
+
+use App\Dto\TaskEvent;
+use MongoDB\Collection;
+use MongoDB\Client;
+
+final class TaskEventLogger
+{
+    private Collection $collection;
+
+    public function __construct(Client $client)
+    {
+        $this->collection = $client->selectCollection(
+            $_ENV['MONGODB_DB'],
+            'task_events'
+        );
+    }
+
+    public function log(TaskEvent $event): void
+    {
+        $this->collection->insertOne([
+            'taskId'    => $event->taskId,
+            'action'    => $event->action,
+            'oldData'   => $event->oldData,
+            'newData'   => $event->newData,
+            'createdAt' => $event->createdAt->format('c'),
+        ]);
+    }
+
+    public function findByTaskId(int $taskId): array
+    {
+        return $this->collection->find(
+            ['taskId' => $taskId],
+            ['sort' => ['createdAt' => -1]]
+        )->toArray();
+    }
+}
+
+=== src/Service/CachedTaskLister.php ===
+<?php
+
+namespace App\Service;
+
+use App\Dto\PaginatedResult;
+use App\Dto\TaskListQuery;
+use App\Service\TaskListerInterface;
+use Psr\Cache\InvalidArgumentException;
+use Psr\Log\LoggerInterface;
+use Symfony\Contracts\Cache\CacheInterface;
+use Symfony\Contracts\Cache\ItemInterface;
+
+readonly class CachedTaskLister implements TaskListerInterface
+{
+    public function __construct(
+        private TaskListerInterface $delegate,
+        private CacheInterface      $cache,
+        private LoggerInterface     $logger,
+    )
+    {
+    }
+
+    /**
+     * @throws InvalidArgumentException
+     */
+    public function getFilteredAndSortedTasks(TaskListQuery $query): PaginatedResult
+    {
+        $cacheKey = sprintf(
+            'tasks_list_%s_%s_%s_p%s_l%s',
+            $query->filter->value,
+            $query->sort->value,
+            $query->order->value,
+            $query->page,
+            $query->limit,
+        );
+
+        try {
+            return $this->cache->get($cacheKey, function (ItemInterface $item) use ($query) {
+                $item->expiresAfter(600);
+                $item->tag(['tasks_collection']);
+
+                return $this->delegate->getFilteredAndSortedTasks($query);
+            });
+        } catch (\Throwable $exception) {
+            $this->logger->error('Redis error', [
+                'message' => $exception->getMessage(),
+                'cacheKey' => $cacheKey,
+            ]);
+
+            return $this->delegate->getFilteredAndSortedTasks($query);
+        }
+    }
+}
+
+=== src/Service/DoctrinePaginator.php ===
+<?php
+
+namespace App\Service;
+
+use App\ValueObject\Pagination\Limit;
+use App\ValueObject\Pagination\Page;
+use Doctrine\ORM\QueryBuilder;
+use App\Dto\PaginatedResult;
+
+class DoctrinePaginator
+{
+    public function paginate(QueryBuilder $qb, Page $page, Limit $limit, string $idColumn = 'id'): PaginatedResult
+    {
+        $rootAlias = $qb->getRootAliases()[0] ?? 't';
+
+        $total = (int) (clone $qb)
+            ->select(sprintf('COUNT(DISTINCT %s.%s)', $rootAlias, $idColumn))
+            ->getQuery()
+            ->getSingleScalarResult();
+
+        $qb->setFirstResult(($page->number - 1) * $limit->value)
+            ->setMaxResults($limit->value);
+
+        return new PaginatedResult(
+            items: $qb->getQuery()->getResult(),
+            currentPage: $page->number,
+            totalItems: (int) $total,
+            itemsPerPage: $limit->value,
+        );
+    }
+}
+
+=== src/Service/TaskLister.php ===
+<?php
+
+namespace App\Service;
+
+use App\Dto\PaginatedResult;
+use App\Dto\TaskListQuery;
+use App\Factory\SortingStrategyFactory;
+use App\Factory\SpecificationFactory;
+use App\Repository\TaskRepository;
+
+readonly class TaskLister implements TaskListerInterface
+{
+    public function __construct(
+        private TaskRepository         $taskRepository,
+        private SortingStrategyFactory $sortingStrategyFactory,
+        private SpecificationFactory   $specificationFactory,
+        private DoctrinePaginator      $paginator,
+    )
+    {
+    }
+
+    public function getFilteredAndSortedTasks(TaskListQuery $query): PaginatedResult
+    {
+        $qb = $this->taskRepository->createQueryBuilder('t');
+
+        $specification = $this->specificationFactory->getSpecification($query->filter->value);
+        $specification?->apply($qb);
+
+        $sortingStrategy = $this->sortingStrategyFactory->getStrategy($query->sort->value);
+        $sortingStrategy?->apply($qb, $query->order->value);
+
+        return $this->paginator->paginate($qb, $query->page, $query->limit);
+    }
+}
+
+=== src/Service/QueryBus.php ===
+<?php
+
+namespace App\Service;
+
+use Symfony\Component\Messenger\Exception\ExceptionInterface;
+use Symfony\Component\Messenger\MessageBusInterface;
+use Symfony\Component\Messenger\Stamp\HandledStamp;
+
+readonly class QueryBus
+{
+    public function __construct(private MessageBusInterface $queryBus)
+    {
+
+    }
+
+    /**
+     * @throws ExceptionInterface
+     */
+    public function dispatch(object $query): mixed
+    {
+        $envelope = $this->queryBus->dispatch($query);
+
+        return $envelope->last(HandledStamp::class)->getResult();
+    }
+}
+
+=== src/Service/TaskListerInterface.php ===
+<?php
+
+namespace App\Service;
+
+use App\Dto\PaginatedResult;
+use App\Dto\TaskListQuery;
+
+interface TaskListerInterface
+{
+    public function getFilteredAndSortedTasks(TaskListQuery $query): PaginatedResult;
+}
+
+=== src/Dto/TaskListQuery.php ===
+<?php
+
+namespace App\Dto;
+
+use App\Enum\TaskFilter;
+use App\Enum\TaskOrder;
+use App\Enum\TaskSort;
+use App\ValueObject\Pagination\Limit;
+use App\ValueObject\Pagination\Page;
+
+readonly class TaskListQuery
+{
+    public function __construct(
+        public TaskSort   $sort = TaskSort::CREATED_AT,
+        public TaskOrder  $order = TaskOrder::ASC,
+        public TaskFilter $filter = TaskFilter::ALL,
+        public Page       $page = new Page(1),
+        public Limit      $limit = new Limit(10),
+    ) {}
+}
+
+=== src/Dto/TaskListResult.php ===
+<?php
+
+namespace App\Dto;
+
+readonly class TaskListResult
+{
+    public function __construct(
+        public array         $tasks,
+        public TaskListQuery $query,
+    )
+    {
+    }
+}
+
+=== src/Dto/PaginatedResult.php ===
+<?php
+
+namespace App\Dto;
+
+readonly class PaginatedResult
+{
+    public function __construct(
+        public array $items,
+        public int   $currentPage,
+        public int   $totalItems,
+        public int   $itemsPerPage,
+    ) {}
+
+    public function getTotalPages(): int
+    {
+        return (int) ceil($this->totalItems / $this->itemsPerPage);
+    }
+}
+
+=== src/Dto/TaskEvent.php ===
+<?php
+
+namespace App\Dto;
+
+readonly class TaskEvent
+{
+    public function __construct(
+        public ?int               $taskId,
+        public string             $action,
+        public array              $oldData,
+        public array              $newData,
+        public \DateTimeImmutable $createdAt = new \DateTimeImmutable(),
+    ) {
+
+    }
+}
+
+=== src/Dto/TaskDto.php ===
+<?php
+
+namespace App\Dto;
+
+use App\Enum\TaskStatus;
+use Symfony\Component\Validator\Constraints as Assert;
+
+final class TaskDto
+{
+    public function __construct(
+        #[Assert\NotBlank(message: 'TaskDto.name.not_blank')]
+        #[Assert\Length(min: 3, max: 255, minMessage: 'TaskDto.name.length', maxMessage: 'TaskDto.name.length')]
+        public string     $name = '',
+
+        public TaskStatus $status = TaskStatus::NOT_COMPLETED,
+    )
+    {
+    }
+
+    public function toArray(): array
+    {
+        return [
+            'name' => $this->name,
+            'status' => $this->status->value,
+        ];
+    }
+}
+
+=== src/Entity/Task.php ===
+<?php
+
+namespace App\Entity;
+
+use App\Enum\TaskStatus;
+use App\Repository\TaskRepository;
+use Doctrine\ORM\Mapping as ORM;
+
+#[ORM\Entity(repositoryClass: TaskRepository::class)]
+#[ORM\HasLifecycleCallbacks]
+class Task
+{
+    #[ORM\Id]
+    #[ORM\GeneratedValue]
+    #[ORM\Column]
+    private ?int $id = null;
+
+    #[ORM\Column(length: 255)]
+    private ?string $name = null;
+
+    #[ORM\Column(length: 20, enumType: TaskStatus::class)]
+    private TaskStatus $status = TaskStatus::DEFAULT;
+
+    #[ORM\Column(type: 'datetime_immutable', updatable: false)]
+    private ?\DateTimeImmutable $created_at = null;
+
+    public function getId(): ?int
+    {
+        return $this->id;
+    }
+
+    public function getName(): ?string
+    {
+        return $this->name;
+    }
+
+    public function setName(string $name): static
+    {
+        $this->name = $name;
+
+        return $this;
+    }
+
+    public function isCompleted(): ?bool
+    {
+        return $this->status === TaskStatus::COMPLETED;
+    }
+
+    public function getCreatedAt(): ?\DateTimeImmutable
+    {
+        return $this->created_at;
+    }
+
+    public function setCreatedAt(\DateTimeImmutable $created_at): static
+    {
+        $this->created_at = $created_at;
+
+        return $this;
+    }
+
+    #[ORM\PrePersist]
+    public function setCreatedAtValue(): void
+    {
+        $this->created_at = new \DateTimeImmutable();
+    }
+
+    public function getStatus(): TaskStatus
+    {
+        return $this->status;
+    }
+
+    public function setStatus(TaskStatus $status): static
+    {
+        $this->status = $status;
+        return $this;
+    }
+
+    public function toArray(): array
+    {
+        return [
+            'id' => $this->id,
+            'name' => $this->name,
+            'status' => $this->status->value,
+            'created_at' => $this->created_at?->format('c'),
+        ];
+    }
+}
+
+=== src/Entity/ResetPasswordRequest.php ===
+<?php
+
+namespace App\Entity;
+
+use App\Repository\ResetPasswordRequestRepository;
+use Doctrine\ORM\Mapping as ORM;
+use SymfonyCasts\Bundle\ResetPassword\Model\ResetPasswordRequestInterface;
+use SymfonyCasts\Bundle\ResetPassword\Model\ResetPasswordRequestTrait;
+
+#[ORM\Entity(repositoryClass: ResetPasswordRequestRepository::class)]
+class ResetPasswordRequest implements ResetPasswordRequestInterface
+{
+    use ResetPasswordRequestTrait;
+
+    #[ORM\Id]
+    #[ORM\GeneratedValue]
+    #[ORM\Column]
+    private ?int $id = null;
+
+    #[ORM\ManyToOne]
+    #[ORM\JoinColumn(nullable: false)]
+    private ?User $user = null;
+
+    public function __construct(User $user, \DateTimeInterface $expiresAt, string $selector, string $hashedToken)
+    {
+        $this->user = $user;
+        $this->initialize($expiresAt, $selector, $hashedToken);
+    }
+
+    public function getId(): ?int
+    {
+        return $this->id;
+    }
+
+    public function getUser(): User
+    {
+        return $this->user;
+    }
+}
+
+=== src/Entity/User.php ===
+<?php
+
+namespace App\Entity;
+
+use App\Repository\UserRepository;
+use Doctrine\ORM\Mapping as ORM;
+use Symfony\Bridge\Doctrine\Validator\Constraints\UniqueEntity;
+use Symfony\Component\Security\Core\User\PasswordAuthenticatedUserInterface;
+use Symfony\Component\Security\Core\User\UserInterface;
+use Symfony\Component\Serializer\Attribute\Groups;
+use OpenApi\Attributes as OA;
+
+#[ORM\Entity(repositoryClass: UserRepository::class)]
+#[ORM\UniqueConstraint(name: 'UNIQ_IDENTIFIER_EMAIL', fields: ['email'])]
+#[UniqueEntity(fields: ['email'], message: 'There is already an account with this email')]
+#[OA\Schema(
+    schema: 'User',
+    description: 'Пользователь'
+)]
+class User implements UserInterface, PasswordAuthenticatedUserInterface
+{
+    #[ORM\Id]
+    #[ORM\GeneratedValue]
+    #[ORM\Column]
+    #[Groups(['user:read'])]
+    #[OA\Property(example: 1)]
+    private ?int $id = null;
+
+    #[ORM\Column(length: 180)]
+    #[Groups(['user:read'])]
+    #[OA\Property(example: 'after@ya.ru')]
+    private ?string $email = null;
+
+    /**
+     * @var list<string> The user roles
+     */
+    #[ORM\Column]
+    private array $roles = [];
+
+    /**
+     * @var string The hashed password
+     */
+    #[ORM\Column]
+    private ?string $password = null;
+
+    #[ORM\Column]
+    private bool $isVerified = false;
+
+    #[ORM\ManyToOne]
+    #[ORM\JoinColumn(nullable: true)]
+    #[Groups(['user:read'])]
+    #[OA\Property(ref: '#/components/schemas/Status', nullable: true)]
+    private ?Status $currentStatus = null;
+
+    #[ORM\Column(length: 100, nullable: true)]
+    #[Groups(['user:read'])]
+    #[OA\Property(example: 'Максим', nullable: true)]
+    private ?string $displayName = null;
+
+    // Геттеры и сеттеры без изменений
+    public function getId(): ?int
+    {
+        return $this->id;
+    }
+
+    public function getEmail(): ?string
+    {
+        return $this->email;
+    }
+
+    public function setEmail(string $email): static
+    {
+        $this->email = $email;
+        return $this;
+    }
+
+    public function getUserIdentifier(): string
+    {
+        return (string) $this->email;
+    }
+
+    public function getRoles(): array
+    {
+        $roles = $this->roles;
+        $roles[] = 'ROLE_USER';
+        return array_unique($roles);
+    }
+
+    public function setRoles(array $roles): static
+    {
+        $this->roles = $roles;
+        return $this;
+    }
+
+    public function getPassword(): ?string
+    {
+        return $this->password;
+    }
+
+    public function setPassword(string $password): static
+    {
+        $this->password = $password;
+        return $this;
+    }
+
+    public function __serialize(): array
+    {
+        $data = (array) $this;
+        $data["\0".self::class."\0password"] = hash('crc32c', $this->password);
+        return $data;
+    }
+
+    public function isVerified(): bool
+    {
+        return $this->isVerified;
+    }
+
+    public function setIsVerified(bool $isVerified): static
+    {
+        $this->isVerified = $isVerified;
+        return $this;
+    }
+
+    public function getCurrentStatus(): ?Status
+    {
+        return $this->currentStatus;
+    }
+
+    public function setCurrentStatus(?Status $currentStatus): static
+    {
+        $this->currentStatus = $currentStatus;
+        return $this;
+    }
+
+    public function getDisplayName(): ?string
+    {
+        return $this->displayName;
+    }
+
+    public function setDisplayName(?string $displayName): static
+    {
+        $this->displayName = $displayName;
+        return $this;
+    }
+}
+
+=== src/Entity/Status.php ===
+<?php
+
+// Entity/Status.php
+namespace App\Entity;
+
+use App\Repository\StatusRepository;
+use Doctrine\ORM\Mapping as ORM;
+use OpenApi\Attributes as OA;
+use Symfony\Component\Serializer\Attribute\Groups;
+use Symfony\Component\String\Slugger\AsciiSlugger;
+
+#[ORM\Entity(repositoryClass: StatusRepository::class)]
+#[OA\Schema(
+    schema: 'Status',
+    description: 'Статус пользователя'
+)]
+class Status
+{
+    #[ORM\Id]
+    #[ORM\GeneratedValue]
+    #[ORM\Column]
+    #[Groups(['status:read'])]
+    private ?int $id = null;
+
+    #[ORM\Column(length: 100)]
+    #[Groups(['status:read'])]
+    private string $name = '';
+
+    #[ORM\Column(length: 150, unique: true)]
+    #[Groups(['status:read'])]
+    private string $slug = '';
+
+    #[ORM\Column(length: 25)]
+    #[Groups(['status:read'])]
+    private string $color = '#000000';
+
+    #[ORM\Column(length: 25)]
+    #[Groups(['status:read'])]
+    private string $bgColor = '#FFFFFF';
+
+    #[ORM\Column(length: 100, nullable: true)]
+    #[Groups(['status:read'])]
+    private ?string $iconUrl = null;
+
+    #[ORM\Column(type: 'datetime_immutable')]
+    #[Groups(['status:read'])]
+    private \DateTimeImmutable $createdAt;
+
+    public function __construct()
+    {
+        $this->createdAt = new \DateTimeImmutable();
+    }
+
+    public function getId(): ?int
+    {
+        return $this->id;
+    }
+
+    public function getName(): string
+    {
+        return $this->name;
+    }
+
+    public function setName(string $name): static
+    {
+        $this->name = $name;
+
+        if ($this->slug === '') {
+            $slugger = new AsciiSlugger();
+            $this->slug = $slugger->slug($name)->lower()->toString();
+        }
+
+        return $this;
+    }
+
+    public function getSlug(): string
+    {
+        return $this->slug;
+    }
+
+    public function getColor(): string
+    {
+        return $this->color;
+    }
+
+    public function setColor(string $color): static
+    {
+        $this->color = $color;
+        return $this;
+    }
+
+    public function getBgColor(): string
+    {
+        return $this->bgColor;
+    }
+
+    public function setBgColor(string $bgColor): static
+    {
+        $this->bgColor = $bgColor;
+        return $this;
+    }
+
+    public function getIconUrl(): ?string
+    {
+        return $this->iconUrl;
+    }
+
+    public function setIconUrl(?string $iconUrl): static
+    {
+        $this->iconUrl = $iconUrl;
+        return $this;
+    }
+
+    public function getCreatedAt(): \DateTimeImmutable
+    {
+        return $this->createdAt;
+    }
+}
+
+=== src/Specification/SpecificationInterface.php ===
+<?php
+// src/Specification/SpecificationInterface.php
+
+namespace App\Specification;
+
+use Doctrine\ORM\QueryBuilder;
+
+interface SpecificationInterface
+{
+    public function apply(QueryBuilder $qb): void;
+    public function getKey(): string; // completed, not_completed, etc.
+}
+
+=== src/Specification/NotCompletedTasksSpecification.php ===
+<?php
+// src/Specification/NotCompletedTasksSpecification.php
+
+namespace App\Specification;
+
+use App\Enum\TaskStatus;
+use Doctrine\ORM\QueryBuilder;
+
+class NotCompletedTasksSpecification implements SpecificationInterface
+{
+    public function apply(QueryBuilder $qb): void
+    {
+        $qb->andWhere('t.status = :status')
+            ->setParameter('status', TaskStatus::NOT_COMPLETED);    }
+
+    public function getKey(): string
+    {
+        return 'not_completed';
+    }
+}
+
+=== src/Specification/CompletedTasksSpecification.php ===
+<?php
+// src/Specification/CompletedTasksSpecification.php
+
+namespace App\Specification;
+
+use App\Enum\TaskStatus;
+use Doctrine\ORM\QueryBuilder;
+
+class CompletedTasksSpecification implements SpecificationInterface
+{
+    public function apply(QueryBuilder $qb): void
+    {
+        $qb->andWhere('t.status = :status')
+            ->setParameter('status', TaskStatus::COMPLETED);
+    }
+
+    public function getKey(): string
+    {
+        return 'completed';
+    }
+}
+
+=== src/Strategy/SortByCreatedAtStrategy.php ===
+<?php
+// src/Strategy/SortByCreatedAtStrategy.php
+
+namespace App\Strategy;
+
+use Doctrine\ORM\QueryBuilder;
+
+class SortByCreatedAtStrategy implements SortingStrategyInterface
+{
+    public function apply(QueryBuilder $qb, string $order): void
+    {
+        $qb->orderBy('t.created_at', $order);
+    }
+
+    public function getKey(): string
+    {
+        return 'created_at';
+    }
+}
+
+=== src/Strategy/SortByIdStrategy.php ===
+<?php
+
+namespace App\Strategy;
+
+use Doctrine\ORM\QueryBuilder;
+
+class SortByIdStrategy implements SortingStrategyInterface
+{
+    public function apply(QueryBuilder $qb, string $order): void
+    {
+        $qb->orderBy('t.id', $order);
+    }
+
+    public function getKey(): string
+    {
+        return 'id';
+    }
+}
+
+=== src/Strategy/SortingStrategyInterface.php ===
+<?php
+// src/Strategy/SortingStrategyInterface.php
+
+namespace App\Strategy;
+
+use Doctrine\ORM\QueryBuilder;
+
+interface SortingStrategyInterface
+{
+    public function apply(QueryBuilder $qb, string $order): void;
+    public function getKey(): string;
+}
+
+=== src/Strategy/SortByNameStrategy.php ===
+<?php
+// src/Strategy/SortByNameStrategy.php
+
+namespace App\Strategy;
+
+use Doctrine\ORM\QueryBuilder;
+
+class SortByNameStrategy implements SortingStrategyInterface
+{
+    public function apply(QueryBuilder $qb, string $order): void
+    {
+        $qb->orderBy('t.name', $order);
+    }
+
+    public function getKey(): string
+    {
+        return 'name';
+    }
+}
+
+=== src/Enum/TaskFilter.php ===
+<?php
+
+namespace App\Enum;
+
+enum TaskFilter: string
+{
+    case ALL = 'all';
+    case COMPLETED = 'completed';
+    case NOT_COMPLETED = 'not_completed';
+
+    public final const self DEFAULT = self::ALL;
+
+    public function getLabel(): string
+    {
+        return match ($this) {
+            self::ALL => 'Все',
+            self::COMPLETED => 'Выполненные',
+            self::NOT_COMPLETED => 'Невыполненные',
+        };
+    }
+
+    public function isAll(): bool
+    {
+        return $this === self::ALL;
+    }
+
+    public function isCompleted(): bool
+    {
+        return $this === self::COMPLETED;
+    }
+
+    public function isNotCompleted(): bool
+    {
+        return $this === self::NOT_COMPLETED;
+    }
+}
+
+=== src/Enum/TaskAction.php ===
+<?php
+
+namespace App\Enum;
+
+enum TaskAction: string
+{
+    case CREATE = 'create';
+    case EDIT = 'edit';
+    case DELETE = 'delete';
+}
+
+=== src/Enum/TaskStatus.php ===
+<?php
+
+// src/Enum/TaskStatus.php
+namespace App\Enum;
+
+enum TaskStatus: string
+{
+    case COMPLETED = 'completed';
+    case NOT_COMPLETED = 'not_completed';
+
+    public final const self DEFAULT = self::NOT_COMPLETED;
+
+    public function getLabel(): string
+    {
+        return match($this) {
+            self::COMPLETED => '✅ Выполнена',
+            self::NOT_COMPLETED => '❌ Не выполнена',
+        };
+    }
+}
+
+=== src/Enum/TaskSort.php ===
+<?php
+
+namespace App\Enum;
+
+enum TaskSort: string
+{
+    case CREATED_AT = 'created_at';
+    case NAME = 'name';
+    case IS_COMPLETED = 'is_completed';
+    case ID = 'id';
+
+    public final const self DEFAULT = self::CREATED_AT;
+
+    public function getLabel(): string
+    {
+        return match ($this) {
+            self::CREATED_AT => 'По дате создания',
+            self::NAME => 'По названию',
+            self::IS_COMPLETED => 'По статусу',
+            self::ID => 'По ИД',
+        };
+    }
+
+    public function isCreatedAt(): bool
+    {
+        return $this === self::CREATED_AT;
+    }
+
+    public function isName(): bool
+    {
+        return $this === self::NAME;
+    }
+
+    public function isCompleted(): bool
+    {
+        return $this === self::IS_COMPLETED;
+    }
+
+    public function isId(): bool
+    {
+        return $this === self::ID;
+    }
+}
+
+=== src/Enum/TaskOrder.php ===
+<?php
+
+namespace App\Enum;
+
+enum TaskOrder: string
+{
+    case ASC = 'asc';
+    case DESC = 'desc';
+
+    final public const self DEFAULT = self::ASC;
+
+    public function getLabel(): string
+    {
+        return match ($this) {
+            self::ASC => 'По возрастанию',
+            self::DESC => 'По убыванию',
+        };
+    }
+
+    public function isAsc(): bool
+    {
+        return $this === self::ASC;
+    }
+
+    public function isDesc(): bool
+    {
+        return $this === self::DESC;
+    }
+
+    public function toggle(): self
+    {
+        return $this->isAsc() ? self::DESC : self::ASC;
+    }
+}
+
+=== src/Command/Task/CreateTaskHandler.php ===
+<?php
+
+namespace App\Command\Task;
+
+use App\Enum\TaskAction;
+use App\Event\TaskChangedEvent;
+use App\Factory\TaskEventFactory;
+use App\Factory\TaskFactory;
+use App\Repository\TaskRepository;
+use Symfony\Component\Messenger\Attribute\AsMessageHandler;
+use Symfony\Component\Messenger\Exception\ExceptionInterface;
+use Symfony\Component\Messenger\MessageBusInterface;
+
+#[AsMessageHandler(bus: 'command.bus')]
+readonly class CreateTaskHandler
+{
+    public function __construct(
+        private TaskRepository      $taskRepository,
+        private TaskFactory         $taskFactory,
+        private TaskEventFactory    $taskEventFactory,
+        private MessageBusInterface $eventBus,
+    ) {
+    }
+
+    /**
+     * @throws ExceptionInterface
+     */
+    public function __invoke(CreateTaskCommand $command): void
+    {
+        $task = $this->taskFactory->createFromDto($command->taskData);
+        $this->taskRepository->save($task);
+
+        $this->eventBus->dispatch(
+            new TaskChangedEvent(
+                $this->taskEventFactory->createFromTask(
+                    TaskAction::CREATE,
+                    $task,
+                ),
+            ),
+        );
+    }
+}
+
+=== src/Command/Task/UpdateTaskHandler.php ===
+<?php
+
+namespace App\Command\Task;
+
+use App\Enum\TaskAction;
+use App\Event\TaskChangedEvent;
+use App\Factory\TaskEventFactory;
+use App\Factory\TaskFactory;
+use App\Repository\TaskRepository;
+use Symfony\Component\Messenger\Attribute\AsMessageHandler;
+use Symfony\Component\Messenger\Exception\ExceptionInterface;
+use Symfony\Component\Messenger\MessageBusInterface;
+
+#[AsMessageHandler(bus: 'command.bus')]
+readonly class UpdateTaskHandler
+{
+    public function __construct(
+        private TaskFactory         $taskFactory,
+        private TaskEventFactory    $taskEventFactory,
+        private MessageBusInterface $eventBus,
+        private TaskRepository      $taskRepository,
+    ) {
+    }
+
+    /**
+     * @throws ExceptionInterface
+     */
+    public function __invoke(UpdateTaskCommand $command): void
+    {
+        $task = $this->taskRepository->find($command->taskId);
+        if (!$task) {
+            throw new \InvalidArgumentException('Task not found');
+        }
+
+        $this->taskFactory->updateFromDto($task, $command->taskData);
+        $this->taskRepository->save($task);
+
+        $this->eventBus->dispatch(
+            new TaskChangedEvent(
+                $this->taskEventFactory->createFromTask(TaskAction::EDIT, $task, $command->taskData),
+            ),
+        );
+    }
+}
+
+=== src/Command/Task/DeleteTaskCommand.php ===
+<?php
+
+namespace App\Command\Task;
+
+readonly class DeleteTaskCommand
+{
+    public function __construct(
+        public final int $taskId,
+    ) {
+
+    }
+}
+
+=== src/Command/Task/UpdateTaskCommand.php ===
+<?php
+
+namespace App\Command\Task;
+
+use App\Dto\TaskDto;
+
+readonly class UpdateTaskCommand
+{
+    public function __construct(
+        public int     $taskId,
+        public TaskDto $taskData,
+    ) {}
+}
+
+=== src/Command/Task/DeleteTaskHandler.php ===
+<?php
+
+namespace App\Command\Task;
+
+use App\Enum\TaskAction;
+use App\Event\TaskChangedEvent;
+use App\Factory\TaskEventFactory;
+use App\Repository\TaskRepository;
+use Symfony\Component\Messenger\Attribute\AsMessageHandler;
+use Symfony\Component\Messenger\Exception\ExceptionInterface;
+use Symfony\Component\Messenger\MessageBusInterface;
+
+#[AsMessageHandler(bus: 'command.bus')]
+readonly class DeleteTaskHandler
+{
+    public function __construct(
+        public final TaskRepository $taskRepository,
+        public final TaskEventFactory $taskEventFactory,
+        public final MessageBusInterface $eventBus,
+    ) {
+
+    }
+
+    /**
+     * @throws ExceptionInterface
+     */
+    public function __invoke(DeleteTaskCommand $command): void
+    {
+        $task = $this->taskRepository->find($command->taskId);
+
+        if (!$task) {
+            throw new \InvalidArgumentException("Task with id {$command->taskId} not found");
+        }
+
+        $this->eventBus->dispatch(
+            new TaskChangedEvent(
+                $this->taskEventFactory->createFromTask(TaskAction::DELETE, $task),
+            ),
+        );
+
+        $this->taskRepository->remove($task);
+    }
+}
+
+=== src/Command/Task/CreateTaskCommand.php ===
+<?php
+
+namespace App\Command\Task;
+
+use App\Dto\TaskDto;
+
+readonly class CreateTaskCommand
+{
+    public function __construct(
+        public TaskDto $taskData,
+    ) {}
+}
+
+=== src/Contract/AsyncMessageInterface.php ===
+<?php
+
+namespace App\Contract;
+
+interface AsyncMessageInterface
+{
+
+}
+
+=== src/ValueObject/Pagination/Page.php ===
+<?php
+
+namespace App\ValueObject\Pagination;
+
+class Page implements \Stringable
+{
+    public private(set) int $number {
+        set (int $number) {
+            if ($number < 1) {
+                throw new \InvalidArgumentException('Page must be >= 1');
+            }
+            $this->number = $number;
+        }
+    }
+
+    public function __construct(int $number = 1)
+    {
+        $this->number = $number;
+    }
+
+    public function __toString(): string
+    {
+        return (string) $this->number;
+    }
+}
+
+=== src/ValueObject/Pagination/Limit.php ===
+<?php
+
+namespace App\ValueObject\Pagination;
+
+class Limit implements \Stringable
+{
+    public private(set) int $value {
+        set (int $value) {
+            if ($value < 1 || $value > 100) {
+                throw new \InvalidArgumentException('Limit must be between 1 and 100');
+            }
+            $this->value = $value;
+        }
+    }
+
+    public function __construct(int $value = 10)
+    {
+        $this->value = $value;
+    }
+
+    public function __toString(): string
+    {
+        return (string) $this->value;
+    }
+}
+
+=== src/Repository/ResetPasswordRequestRepository.php ===
+<?php
+
+namespace App\Repository;
+
+use App\Entity\ResetPasswordRequest;
+use App\Entity\User;
+use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
+use Doctrine\Persistence\ManagerRegistry;
+use SymfonyCasts\Bundle\ResetPassword\Model\ResetPasswordRequestInterface;
+use SymfonyCasts\Bundle\ResetPassword\Persistence\Repository\ResetPasswordRequestRepositoryTrait;
+use SymfonyCasts\Bundle\ResetPassword\Persistence\ResetPasswordRequestRepositoryInterface;
+
+/**
+ * @extends ServiceEntityRepository<ResetPasswordRequest>
+ */
+class ResetPasswordRequestRepository extends ServiceEntityRepository implements ResetPasswordRequestRepositoryInterface
+{
+    use ResetPasswordRequestRepositoryTrait;
+
+    public function __construct(ManagerRegistry $registry)
+    {
+        parent::__construct($registry, ResetPasswordRequest::class);
+    }
+
+    /**
+     * @param User $user
+     */
+    public function createResetPasswordRequest(object $user, \DateTimeInterface $expiresAt, string $selector, string $hashedToken): ResetPasswordRequestInterface
+    {
+        return new ResetPasswordRequest($user, $expiresAt, $selector, $hashedToken);
+    }
+}
+
+=== src/Repository/StatusRepository.php ===
+<?php
+
+namespace App\Repository;
+
+use App\Entity\Status;
+use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
+use Doctrine\Persistence\ManagerRegistry;
+
+/**
+ * @extends ServiceEntityRepository<Status>
+ */
+class StatusRepository extends ServiceEntityRepository
+{
+    public function __construct(ManagerRegistry $registry)
+    {
+        parent::__construct($registry, Status::class);
+    }
+
+    //    /**
+    //     * @return Status[] Returns an array of Status objects
+    //     */
+    //    public function findByExampleField($value): array
+    //    {
+    //        return $this->createQueryBuilder('s')
+    //            ->andWhere('s.exampleField = :val')
+    //            ->setParameter('val', $value)
+    //            ->orderBy('s.id', 'ASC')
+    //            ->setMaxResults(10)
+    //            ->getQuery()
+    //            ->getResult()
+    //        ;
+    //    }
+
+    //    public function findOneBySomeField($value): ?Status
+    //    {
+    //        return $this->createQueryBuilder('s')
+    //            ->andWhere('s.exampleField = :val')
+    //            ->setParameter('val', $value)
+    //            ->getQuery()
+    //            ->getOneOrNullResult()
+    //        ;
+    //    }
+}
+
+=== src/Repository/UserRepository.php ===
+<?php
+
+namespace App\Repository;
+
+use App\Entity\User;
+use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
+use Doctrine\Persistence\ManagerRegistry;
+use Symfony\Component\Security\Core\Exception\UnsupportedUserException;
+use Symfony\Component\Security\Core\User\PasswordAuthenticatedUserInterface;
+use Symfony\Component\Security\Core\User\PasswordUpgraderInterface;
+
+/**
+ * @extends ServiceEntityRepository<User>
+ */
+class UserRepository extends ServiceEntityRepository implements PasswordUpgraderInterface
+{
+    public function __construct(ManagerRegistry $registry)
+    {
+        parent::__construct($registry, User::class);
+    }
+
+    /**
+     * Used to upgrade (rehash) the user's password automatically over time.
+     */
+    public function upgradePassword(PasswordAuthenticatedUserInterface $user, string $newHashedPassword): void
+    {
+        if (!$user instanceof User) {
+            throw new UnsupportedUserException(sprintf('Instances of "%s" are not supported.', $user::class));
+        }
+
+        $user->setPassword($newHashedPassword);
+        $this->getEntityManager()->persist($user);
+        $this->getEntityManager()->flush();
+    }
+
+    /**
+     * @return User[]
+     */
+    public function search(string $query, int $limit = 10): array
+    {
+        return $this->createQueryBuilder('u')
+            ->leftJoin('u.currentStatus', 's')
+            ->addSelect('s')
+            ->where('u.email LIKE :q')
+            ->orWhere('u.displayName LIKE :q')
+            ->setParameter('q', '%' . $query . '%')
+            ->setMaxResults($limit)
+            ->getQuery()
+            ->getResult();
+    }
+}
+
+=== src/Repository/TaskRepository.php ===
+<?php
+
+namespace App\Repository;
+
+use App\Entity\Task;
+use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
+use Doctrine\Persistence\ManagerRegistry;
+
+/**
+ * @extends ServiceEntityRepository<Task>
+ */
+class TaskRepository extends ServiceEntityRepository
+{
+    public function __construct(ManagerRegistry $registry)
+    {
+        parent::__construct($registry, Task::class);
+    }
+
+    public function save(Task $task, bool $flush = true): void
+    {
+        $this->getEntityManager()->persist($task);
+
+        if ($flush) {
+            $this->getEntityManager()->flush();
+        }
+    }
+
+    public function remove(Task $task, bool $flush = true): void
+    {
+        $this->getEntityManager()->remove($task);
+
+        if ($flush) {
+            $this->getEntityManager()->flush();
+        }
+    }
+
+    public function flush(): void
+    {
+        $this->getEntityManager()->flush();
+    }
+
+    //    /**
+    //     * @return Task[] Returns an array of Task objects
+    //     */
+    //    public function findByExampleField($value): array
+    //    {
+    //        return $this->createQueryBuilder('t')
+    //            ->andWhere('t.exampleField = :val')
+    //            ->setParameter('val', $value)
+    //            ->orderBy('t.id', 'ASC')
+    //            ->setMaxResults(10)
+    //            ->getQuery()
+    //            ->getResult()
+    //        ;
+    //    }
+
+    //    public function findOneBySomeField($value): ?Task
+    //    {
+    //        return $this->createQueryBuilder('t')
+    //            ->andWhere('t.exampleField = :val')
+    //            ->setParameter('val', $value)
+    //            ->getQuery()
+    //            ->getOneOrNullResult()
+    //        ;
+    //    }
+}
+
+=== src/Kernel.php ===
+<?php
+
+namespace App;
+
+use Symfony\Bundle\FrameworkBundle\Kernel\MicroKernelTrait;
+use Symfony\Component\HttpKernel\Kernel as BaseKernel;
+
+class Kernel extends BaseKernel
+{
+    use MicroKernelTrait;
+}
+
+=== src/Security/EmailVerifier.php ===
+<?php
+
+namespace App\Security;
+
+use App\Entity\User;
+use Doctrine\ORM\EntityManagerInterface;
+use Symfony\Bridge\Twig\Mime\TemplatedEmail;
+use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\Mailer\MailerInterface;
+use SymfonyCasts\Bundle\VerifyEmail\Exception\VerifyEmailExceptionInterface;
+use SymfonyCasts\Bundle\VerifyEmail\VerifyEmailHelperInterface;
+
+class EmailVerifier
+{
+    public function __construct(
+        private VerifyEmailHelperInterface $verifyEmailHelper,
+        private MailerInterface $mailer,
+        private EntityManagerInterface $entityManager,
+    ) {
+    }
+
+    public function sendEmailConfirmation(string $verifyEmailRouteName, User $user, TemplatedEmail $email): void
+    {
+        $signatureComponents = $this->verifyEmailHelper->generateSignature(
+            $verifyEmailRouteName,
+            (string) $user->getId(),
+            (string) $user->getEmail()
+        );
+
+        $context = $email->getContext();
+        $context['signedUrl'] = $signatureComponents->getSignedUrl();
+        $context['expiresAtMessageKey'] = $signatureComponents->getExpirationMessageKey();
+        $context['expiresAtMessageData'] = $signatureComponents->getExpirationMessageData();
+
+        $email->context($context);
+
+        $this->mailer->send($email);
+    }
+
+    /**
+     * @throws VerifyEmailExceptionInterface
+     */
+    public function handleEmailConfirmation(Request $request, User $user): void
+    {
+        $this->verifyEmailHelper->validateEmailConfirmationFromRequest($request, (string) $user->getId(), (string) $user->getEmail());
+
+        $user->setIsVerified(true);
+
+        $this->entityManager->persist($user);
+        $this->entityManager->flush();
+    }
+}
+
+=== src/Security/WebAuthenticator.php ===
+<?php
+
+namespace App\Security;
+
+use Symfony\Component\HttpFoundation\RedirectResponse;
+use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
+use Symfony\Component\Security\Core\Authentication\Token\TokenInterface;
+use Symfony\Component\Security\Http\Authenticator\AbstractLoginFormAuthenticator;
+use Symfony\Component\Security\Http\Authenticator\Passport\Badge\CsrfTokenBadge;
+use Symfony\Component\Security\Http\Authenticator\Passport\Badge\RememberMeBadge;
+use Symfony\Component\Security\Http\Authenticator\Passport\Badge\UserBadge;
+use Symfony\Component\Security\Http\Authenticator\Passport\Credentials\PasswordCredentials;
+use Symfony\Component\Security\Http\Authenticator\Passport\Passport;
+use Symfony\Component\Security\Http\SecurityRequestAttributes;
+use Symfony\Component\Security\Http\Util\TargetPathTrait;
+
+class WebAuthenticator extends AbstractLoginFormAuthenticator
+{
+    use TargetPathTrait;
+
+    public const string LOGIN_ROUTE = 'app_login';
+
+    public function __construct(private UrlGeneratorInterface $urlGenerator)
+    {
+    }
+
+    public function authenticate(Request $request): Passport
+    {
+        $email = $request->getPayload()->getString('email');
+
+        $request->getSession()->set(SecurityRequestAttributes::LAST_USERNAME, $email);
+
+        return new Passport(
+            new UserBadge($email),
+            new PasswordCredentials($request->getPayload()->getString('password')),
+            [
+                new CsrfTokenBadge('authenticate', $request->getPayload()->getString('_csrf_token')),
+                new RememberMeBadge(),
+            ]
+        );
+    }
+
+    public function onAuthenticationSuccess(Request $request, TokenInterface $token, string $firewallName): ?Response
+    {
+        if ($targetPath = $this->getTargetPath($request->getSession(), $firewallName)) {
+            return new RedirectResponse($targetPath);
+        }
+
+        return new RedirectResponse($this->urlGenerator->generate('app_tasks'));
+    }
+
+    protected function getLoginUrl(Request $request): string
+    {
+        return $this->urlGenerator->generate(self::LOGIN_ROUTE);
+    }
+}
+
+=== src/Query/Task/GetTaskForEditHandler.php ===
+<?php
+
+namespace App\Query\Task;
+
+use App\Dto\TaskDto;
+use App\Entity\Task;
+use App\Query\Task\GetTaskForEditQuery;
+use Doctrine\ORM\EntityManagerInterface;
+use Symfony\Component\Messenger\Attribute\AsMessageHandler;
+
+#[AsMessageHandler(bus: 'query.bus')]
+readonly class GetTaskForEditHandler
+{
+    public function __construct(
+        private EntityManagerInterface $entityManager,
+    ) {}
+
+    public function __invoke(GetTaskForEditQuery $query): TaskDto
+    {
+        $task = $this->entityManager->getRepository(Task::class)->find($query->id);
+        if (!$task) {
+            throw new \InvalidArgumentException('Task not found');
+        }
+
+        return new TaskDto(
+            name: $task->getName() ?? '',
+            status: $task->getStatus(),
+        );
+    }
+}
+
+=== src/Query/Task/GetTaskListHandler.php ===
+<?php
+
+namespace App\Query\Task;
+
+use App\Dto\PaginatedResult;
+use App\Service\TaskListerInterface;
+use Symfony\Component\Messenger\Attribute\AsMessageHandler;
+
+#[AsMessageHandler]
+readonly class GetTaskListHandler
+{
+    public function __construct(
+        public final TaskListerInterface $taskLister,
+    ) {
+
+    }
+
+    public function __invoke(GetTaskListQuery $query): PaginatedResult
+    {
+        return $this->taskLister->getFilteredAndSortedTasks($query->taskListQuery);
+    }
+}
+
+=== src/Query/Task/GetTaskHandler.php ===
+<?php
+
+namespace App\Query\Task;
+
+use App\Entity\Task;
+use App\Repository\TaskRepository;
+
+readonly class GetTaskHandler
+{
+    public function __construct(
+        private final TaskRepository $taskRepository,
+    ) {
+
+    }
+
+    public function __invoke(GetTaskQuery $query): Task
+    {
+        return $this->taskRepository->find($query->taskId);
+    }
+}
+
+=== src/Query/Task/GetTaskQuery.php ===
+<?php
+
+namespace App\Query\Task;
+
+readonly class GetTaskQuery
+{
+    public function __construct(public final int $taskId)
+    {
+
+    }
+}
+
+=== src/Query/Task/GetTaskListQuery.php ===
+<?php
+
+namespace App\Query\Task;
+
+use App\Dto\TaskListQuery;
+
+readonly class GetTaskListQuery
+{
+    public function __construct(
+        public final TaskListQuery $taskListQuery,
+    ) {
+
+    }
+}
+
+=== src/Query/Task/GetTaskForEditQuery.php ===
+<?php
+
+namespace App\Query\Task;
+
+class GetTaskForEditQuery
+{
+    public function __construct(
+        public readonly int $id,
+    ) {}
+}
+
+=== templates/index/index.html.twig ===
+{% extends 'base.html.twig' %}
+
+{% block body %}
+
+{% endblock %}
+
+=== templates/base.html.twig ===
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}Welcome!{% endblock %}</title>
+    <link rel="icon"
+          href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 128 128%22><text y=%221.2em%22 font-size=%2296%22>⚫️</text><text y=%221.3em%22 x=%220.2em%22 font-size=%2276%22 fill=%22%23fff%22>sf</text></svg>">
+    {% block stylesheets %}
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5/dist/css/bootstrap.min.css">
+    {% endblock %}
+
+    {% block javascripts %}
+        {% block importmap %}{{ importmap('app') }}{% endblock %}
+        <script src="https://cdn.jsdelivr.net/npm/bootstrap@5/dist/js/bootstrap.bundle.min.js" defer></script>
+    {% endblock %}
+
+    {% set frankenphpHotReload = app.request.server.get('FRANKENPHP_HOT_RELOAD') %}
+    {% if frankenphpHotReload %}
+        <meta name="frankenphp-hot-reload:url" content="{{ frankenphpHotReload }}">
+        <script src="https://cdn.jsdelivr.net/npm/idiomorph"></script>
+        <script src="https://cdn.jsdelivr.net/npm/frankenphp-hot-reload/+esm" type="module"></script>
+    {% endif %}
+</head>
+<body>
+<div class="container mt-4">
+    {% if app.user %}
+        <a href="{{ path('app_logout') }}">Logout</a> |
+    {% else %}
+        <a href="{{ path('app_login') }}">Login</a> |
+        <a href="{{ path('app_register') }}">Register</a> |
+        <a href="{{ path('app_forgot_password_request') }}">Reset password</a> |
+    {% endif %}
+    <a href="{{ path('app_tasks') }}">Tasks</a>
+</div>
+{% block body %}{% endblock %}
+</body>
+</html>
+
+=== templates/task/new.html.twig ===
+{% extends 'base.html.twig' %}
+
+{% block title %}New Task{% endblock %}
+
+{% block body %}
+<div class="container mt-4">
+    <h1>Create new Task</h1>
+
+    {{ include('task/_form.html.twig') }}
+
+    <a href="{{ path('app_tasks') }}">back to list</a>
+</div>
+{% endblock %}
+
+=== templates/task/history.html.twig ===
+{% extends 'base.html.twig' %}
+
+{% block title %}История задачи #{{ task.id }}{% endblock %}
+
+{% block body %}
+    <div class="container mt-4">
+        <h1>История задачи #{{ task.id }}: {{ task.name }}</h1>
+
+        <table class="table table-striped">
+            <thead>
+            <tr>
+                <th>Дата</th>
+                <th>Действие</th>
+                <th>Старые данные</th>
+                <th>Новые данные</th>
+            </tr>
+            </thead>
+            <tbody>
+            {% for event in events %}
+                <tr>
+                    <td>{{ event.createdAt|date('d.m.Y H:i:s') }}</td>
+                    <td>{{ event.action }}</td>
+                    <td>{{ event.oldData | json_encode }}</td>
+                    <td>{{ event.newData | json_encode }}</td>
+                </tr>
+            {% else %}
+                <tr>
+                    <td colspan="4">Нет событий</td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+
+        <a href="{{ path('app_tasks') }}">← Назад к списку</a>
+    </div>
+{% endblock %}
+
+=== templates/task/_delete_form.html.twig ===
+<form method="post" action="{{ path('app_task_delete', {'id': task.id}) }}" onsubmit="return confirm('Are you sure you want to delete this item?');">
+    <input type="hidden" name="_token" value="{{ csrf_token('delete' ~ task.id) }}">
+    <button class="btn btn-sm btn-outline-danger">Delete</button>
+</form>
+
+=== templates/task/index.html.twig ===
+{% extends 'base.html.twig' %}
+
+{% block title %}Список задач{% endblock %}
+
+{% block body %}
+
+    <div class="container mt-4">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h1>Список задач</h1>
+            <a href="{{ path('app_task_new') }}" class="btn btn-success">
+                ➕ Создать задачу
+            </a>
+        </div>
+
+        <div class="card mb-4">
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="btn-group" role="group">
+                            <a href="{{ path('app_tasks', {page: result.currentPage, filter: 'all', sort: query.sort.value, order: query.order.value}) }}"
+                               class="btn {{ query.filter.isAll ? 'btn-primary' : 'btn-outline-secondary' }}">Все</a>
+                            <a href="{{ path('app_tasks', {page: result.currentPage, filter: 'completed', sort: query.sort.value, order: query.order.value}) }}"
+                               class="btn {{ query.filter.isCompleted ? 'btn-primary' : 'btn-outline-secondary' }}">Выполненные</a>
+                            <a href="{{ path('app_tasks', {page: result.currentPage, filter: 'not_completed', sort: query.sort.value, order: query.order.value}) }}"
+                               class="btn {{ query.filter.isNotCompleted ? 'btn-primary' : 'btn-outline-secondary' }}">Не выполненные</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="table-responsive">
+            <table class="table table-striped table-hover">
+                <thead>
+                <tr>
+                    <th>
+                        <a href="{{ path('app_tasks', {filter: query.filter.value, sort: enum('App\\Enum\\TaskSort').ID.value, order: (query.sort.isId and query.order.isAsc) ? enum('App\\Enum\\TaskOrder').DESC.value : enum('App\\Enum\\TaskOrder').ASC.value, page: result.currentPage}) }}">
+                            ID
+                        </a>
+                    </th>
+                    <th>
+                        <a href="{{ path('app_tasks', {filter: query.filter.value, sort: 'name', order: (query.sort.isName and query.order.isAsc) ? enum('App\\Enum\\TaskOrder').DESC.value : enum('App\\Enum\\TaskOrder').ASC.value, page: result.currentPage}) }}">
+                            Название
+                            {% if query.sort.isName %}
+                                {{ query.order.isAsc ? ' ▲' : ' ▼' }}
+                            {% endif %}
+                        </a>
+                    </th>
+                    <th>Статус</th>
+                    <th>
+                        <a href="{{ path('app_tasks', {filter: query.filter.value, sort: 'created_at', order: (query.sort.isCreatedAt and query.order.isAsc) ? 'desc' : 'asc', page: result.currentPage}) }}">
+                            Дата создания
+                            {% if query.sort.isCreatedAt %}
+                                {{ query.order.isAsc ? ' ▲' : ' ▼' }}
+                            {% endif %}
+                        </a>
+                    </th>
+                    <th class="text-end">Действия</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for task in result.items %}
+                    <tr>
+                        <td>{{ task.id }}</td>
+                        <td>{{ task.name }}</td>
+                        <td>
+                            {% if task.isCompleted %}
+                                <span class="badge bg-success">✅ Выполнена</span>
+                            {% else %}
+                                <span class="badge bg-secondary">❌ Не выполнена</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ task.createdAt ? task.createdAt|date('d.m.Y H:i') : '' }}</td>
+                        <td class="text-end">
+                            <a href="{{ path('app_task_edit', {'id': task.id}) }}" class="btn btn-sm btn-outline-primary me-1">✏️ Редактировать</a>
+                            <form method="post" action="{{ path('app_task_delete', {'id': task.id}) }}" onsubmit="return confirm('Удалить задачу?');" style="display: inline-block;">
+                                <input type="hidden" name="_token" value="{{ csrf_token('delete' ~ task.id) }}">
+                                <button class="btn btn-sm btn-outline-danger">🗑️ Удалить</button>
+                            </form>
+                        </td>
+                    </tr>
+                {% else %}
+                    <tr>
+                        <td colspan="4" class="text-center">
+                            📭 Нет задач. Самое время создать первую!
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        {# Пагинация #}
+        {% if result.totalPages > 1 %}
+            <nav aria-label="Page navigation" class="mt-4">
+                <ul class="pagination justify-content-center">
+                    {# Previous page #}
+                    {% if result.currentPage > 1 %}
+                        <li class="page-item">
+                            <a class="page-link" href="{{ path('app_tasks', {page: result.currentPage - 1, filter: query.filter.value, sort: query.sort.value, order: query.order.value}) }}">
+                                &laquo; Назад
+                            </a>
+                        </li>
+                    {% else %}
+                        <li class="page-item disabled">
+                            <span class="page-link">&laquo; Назад</span>
+                        </li>
+                    {% endif %}
+
+                    {# Страницы #}
+                    {% set startPage = max(1, result.currentPage - 2) %}
+                    {% set endPage = min(result.totalPages, result.currentPage + 2) %}
+
+                    {% if startPage > 1 %}
+                        <li class="page-item">
+                            <a class="page-link" href="{{ path('app_tasks', {page: 1, filter: query.filter.value, sort: query.sort.value, order: query.order.value}) }}">1</a>
+                        </li>
+                        {% if startPage > 2 %}
+                            <li class="page-item disabled"><span class="page-link">...</span></li>
+                        {% endif %}
+                    {% endif %}
+
+                    {% for pageNum in startPage..endPage %}
+                        <li class="page-item {{ pageNum == result.currentPage ? 'active' : '' }}">
+                            <a class="page-link" href="{{ path('app_tasks', {page: pageNum, filter: query.filter.value, sort: query.sort.value, order: query.order.value}) }}">{{ pageNum }}</a>
+                        </li>
+                    {% endfor %}
+
+                    {% if endPage < result.totalPages %}
+                        {% if endPage < result.totalPages - 1 %}
+                            <li class="page-item disabled"><span class="page-link">...</span></li>
+                        {% endif %}
+                        <li class="page-item">
+                            <a class="page-link" href="{{ path('app_tasks', {page: result.totalPages, filter: query.filter.value, sort: query.sort.value, order: query.order.value}) }}">{{ result.totalPages }}</a>
+                        </li>
+                    {% endif %}
+
+                    {# Next page #}
+                    {% if result.currentPage < result.totalPages %}
+                        <li class="page-item">
+                            <a class="page-link" href="{{ path('app_tasks', {page: result.currentPage + 1, filter: query.filter.value, sort: query.sort.value, order: query.order.value}) }}">
+                                Вперёд &raquo;
+                            </a>
+                        </li>
+                    {% else %}
+                        <li class="page-item disabled">
+                            <span class="page-link">Вперёд &raquo;</span>
+                        </li>
+                    {% endif %}
+                </ul>
+            </nav>
+        {% endif %}
+    </div>
+{% endblock %}
+
+=== templates/task/show.html.twig ===
+{% extends 'base.html.twig' %}
+
+{% block title %}Task{% endblock %}
+
+{% block body %}
+<div class="container mt-4">
+    <h1>Task</h1>
+
+    <table class="table">
+        <tbody>
+            <tr>
+                <th>Id</th>
+                <td>{{ task.id }}</td>
+            </tr>
+            <tr>
+                <th>Name</th>
+                <td>{{ task.name }}</td>
+            </tr>
+            <tr>
+                <th>Is_completed</th>
+                <td>{{ task.isCompleted ? 'Yes' : 'No' }}</td>
+            </tr>
+            <tr>
+                <th>Created_at</th>
+                <td>{{ task.createdAt ? task.createdAt|date('Y-m-d H:i:s') : '' }}</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <a href="{{ path('app_tasks') }}">back to list</a>
+
+    <a href="{{ path('app_task_edit', {'id': task.id}) }}">edit</a>
+</div>
+{% endblock %}
+
+=== templates/task/edit.html.twig ===
+{% extends 'base.html.twig' %}
+
+{% block title %}Edit Task{% endblock %}
+
+{% block body %}
+<div class="container mt-4">
+    <h1>Edit Task</h1>
+
+    {{ include('task/_form.html.twig', {'button_label': 'Update'}) }}
+
+    <a href="{{ path('app_tasks') }}">back to list</a>
+</div>
+{% endblock %}
+
+=== templates/task/_form.html.twig ===
+{{ form_start(form) }}
+    {{ form_errors(form) }}
+    {{ form_widget(form) }}
+<button class="btn btn-sm btn-outline-primary">{{ button_label|default('Save') }}</button>
+{{ form_end(form) }}
+
+=== templates/security/login.html.twig ===
+{% extends 'base.html.twig' %}
+
+{% block title %}Log in!{% endblock %}
+
+{% block body %}
+<div class="container mt-4">
+<form method="post">
+    {% if error %}
+        <div class="alert alert-danger">{{ error.messageKey|trans(error.messageData, 'security') }}</div>
+    {% endif %}
+
+    {% if app.user %}
+        <div class="mb-3">
+            You are logged in as {{ app.user.userIdentifier }}, <a href="{{ logout_path() }}">Logout</a>
+        </div>
+    {% endif %}
+
+    <h1 class="h3 mb-3 font-weight-normal">Please sign in</h1>
+    <label for="inputEmail">Email</label>
+    <input type="email" value="{{ last_username }}" name="email" id="inputEmail" class="form-control" autocomplete="email" required autofocus>
+    <label for="inputPassword">Password</label>
+    <input type="password" name="password" id="inputPassword" class="form-control" autocomplete="current-password" required>
+    <input type="hidden" name="_csrf_token" data-controller="csrf-protection" value="{{ csrf_token('authenticate') }}">
+
+    <div class="checkbox mb-3">
+        <label>
+            <input type="checkbox" name="_remember_me"> Remember me
+        </label>
+    </div>
+
+    <button class="btn btn-lg btn-primary" type="submit">
+        Sign in
+    </button>
+</form>
+</div>
+{% endblock %}
+
+=== templates/registration/confirmation_email.html.twig ===
+{% extends 'base.html.twig' %}
+
+{% block body %}
+
+    <div class="container mt-4">
+        <h1>Hi! Please confirm your email!</h1>
+
+        <p>
+            Please confirm your email address by clicking the following link: <br><br>
+            <a href="{{ signedUrl|raw }}">Confirm my Email</a>.
+            This link will expire in {{ expiresAtMessageKey|trans(expiresAtMessageData, 'VerifyEmailBundle') }}.
+        </p>
+
+        <p>
+            Cheers!
+        </p>
+    </div>
+
+{% endblock %}
+
+=== templates/registration/register.html.twig ===
+{% extends 'base.html.twig' %}
+
+{% block title %}Register{% endblock %}
+
+{% block body %}
+<div class="container mt-4">
+    {% for flash_error in app.flashes('verify_email_error') %}
+        <div class="alert alert-danger" role="alert">{{ flash_error }}</div>
+    {% endfor %}
+
+    <h1>Register</h1>
+
+    {{ form_errors(registrationForm) }}
+
+    {{ form_start(registrationForm) }}
+        {{ form_row(registrationForm.email) }}
+        {{ form_row(registrationForm.displayName) }}
+        {{ form_row(registrationForm.plainPassword, {
+            label: 'Password'
+        }) }}
+        {{ form_row(registrationForm.agreeTerms) }}
+
+        <button type="submit" class="btn">Register</button>
+    {{ form_end(registrationForm) }}
+</div>
+{% endblock %}
+
+=== templates/reset_password/request.html.twig ===
+{% extends 'base.html.twig' %}
+
+{% block title %}Reset your password{% endblock %}
+
+{% block body %}
+<div class="container mt-4">
+    {% for flash_error in app.flashes('reset_password_error') %}
+        <div class="alert alert-danger" role="alert">{{ flash_error }}</div>
+    {% endfor %}
+    <h1>Reset your password</h1>
+
+    {{ form_start(requestForm) }}
+        {{ form_row(requestForm.email) }}
+        <div>
+            <small>
+                Enter your email address, and we will send you a
+                link to reset your password.
+            </small>
+        </div>
+
+        <button class="btn btn-primary">Send password reset email</button>
+    {{ form_end(requestForm) }}
+</div>
+{% endblock %}
+
+=== templates/reset_password/reset.html.twig ===
+{% extends 'base.html.twig' %}
+
+{% block title %}Reset your password{% endblock %}
+
+{% block body %}
+<div class="container mt-4">
+    <h1>Reset your password</h1>
+
+    {{ form_start(resetForm) }}
+        {{ form_row(resetForm.plainPassword) }}
+        <button class="btn btn-primary">Reset password</button>
+    {{ form_end(resetForm) }}
+</div>
+{% endblock %}
+
+=== templates/reset_password/check_email.html.twig ===
+{% extends 'base.html.twig' %}
+
+{% block title %}Password Reset Email Sent{% endblock %}
+
+{% block body %}
+<div class="container mt-4">
+    <p>
+        If an account matching your email exists, then an email was just sent that contains a link that you can use to reset your password.
+        This link will expire in {{ resetToken.expirationMessageKey|trans(resetToken.expirationMessageData, 'ResetPasswordBundle') }}.
+    </p>
+    <p>If you don't receive an email please check your spam folder or <a href="{{ path('app_forgot_password_request') }}">try again</a>.</p>
+</div>
+{% endblock %}
+
+=== templates/reset_password/email.html.twig ===
+<h1>Hi!</h1>
+
+<p>To reset your password, please visit the following link</p>
+
+<a href="{{ url('app_reset_password', {token: resetToken.token}) }}">{{ url('app_reset_password', {token: resetToken.token}) }}</a>
+
+<p>This link will expire in {{ resetToken.expirationMessageKey|trans(resetToken.expirationMessageData, 'ResetPasswordBundle') }}.</p>
+
+<p>Cheers!</p>
+
 === tests/Controller/RegistrationControllerTest.php ===
 <?php
 
@@ -27,7 +4052,11 @@ class RegistrationControllerTest extends WebTestCase
             'registration_form[agreeTerms]' => '1',
         ]);
 
-        $this->assertResponseRedirects('/task/');
+        // Вариант 1: просто строка
+        $this->assertResponseRedirects('/task');
+
+        // Вариант 2: через URL-генератор (лучше)
+        // $this->assertResponseRedirects($client->getContainer()->get('router')->generate('app_tasks'));
     }
 }
 
@@ -318,6 +4347,45 @@ class SecurityControllerTest extends WebTestCase
         $this->assertSelectorTextContains('h1', 'Please sign in');
     }
 
+    public function testLoginWithValidCredentials(): void
+    {
+        $client = static::createClient();
+
+        // 1. Создаём пользователя
+        $user = new User();
+        $user->setEmail('test@example.com');
+        $user->setPassword(
+            static::getContainer()->get('security.password_hasher')->hashPassword($user, 'password')
+        );
+        $user->setDisplayName('Test User');
+
+        $em = static::getContainer()->get('doctrine')->getManager();
+        $em->persist($user);
+        $em->flush();
+
+        // 2. Пытаемся залогиниться
+        $client->request('POST', '/login', [
+            'email' => 'test@example.com',
+            'password' => 'password',
+        ]);
+
+        $this->assertResponseRedirects('/task');
+        $client->followRedirect();
+        $this->assertResponseIsSuccessful();
+        $this->assertSelectorTextContains('h1', 'Список задач');
+    }
+
+    public function testLoginWithInvalidCredentials(): void
+    {
+        $client = static::createClient();
+        $client->request('POST', '/login', [
+            'email' => 'wrong@example.com',
+            'password' => 'wrong',
+        ]);
+
+        $this->assertResponseRedirects('/login');
+    }
+
     public function testLogoutRedirects(): void
     {
         $client = static::createClient();
@@ -355,6 +4423,7 @@ use App\Service\TaskListerInterface;
 use App\ValueObject\Pagination\Limit;
 use App\ValueObject\Pagination\Page;
 use PHPUnit\Framework\TestCase;
+use Psr\Log\LoggerInterface;
 use Symfony\Component\Cache\Adapter\ArrayAdapter;
 use Symfony\Component\Cache\Adapter\TagAwareAdapter;
 
@@ -370,7 +4439,17 @@ class CachedTaskListerTest extends TestCase
             ->willReturn($expectedResult);
 
         $cache = new TagAwareAdapter(new ArrayAdapter());
-        $cachedLister = new CachedTaskLister($delegateMock, $cache);
+
+        // Создаём мок для логгера
+        $logger = $this->createMock(LoggerInterface::class);
+        $logger->expects($this->never()) // Логгер не должен вызываться в этом тесте
+        ->method('error');
+
+        $cachedLister = new CachedTaskLister(
+            $delegateMock,
+            $cache,
+            $logger // 👈 Передаём логгер
+        );
 
         $query = new TaskListQuery(
             sort: TaskSort::NAME,

@@ -117,7 +117,7 @@ class TaskController extends AbstractController
             throw $this->createAccessDeniedException('Invalid CSRF token');
         }
 
-        $commandBus->dispatch(new DeleteTaskCommand($id));
+        $this->commandBus->dispatch(new DeleteTaskCommand($id));
 
         $this->addFlash('success', 'Задача удалена!');
         return $this->redirectToRoute('app_tasks');

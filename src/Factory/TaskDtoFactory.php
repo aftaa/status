@@ -11,7 +11,6 @@ class TaskDtoFactory
 {
     public function createFromRequest(Request $request): TaskDto
     {
-        // Для POST-данных (из формы)
         $payload = $request->getPayload();
 
         return new TaskDto(
