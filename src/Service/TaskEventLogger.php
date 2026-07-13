@@ -36,4 +36,25 @@ final class TaskEventLogger
             ['sort' => ['createdAt' => -1]]
         )->toArray();
     }
+
+    public function list(mixed $page, mixed $limit): array
+    {
+        $skip = ($page - 1) * $limit;
+
+        $items = $this->collection->find(
+            [],
+            [
+                'skip' => $skip,
+                'limit' => $limit,
+                'sort' => ['createdAt' => -1],
+            ],
+        )->toArray();
+
+        $total = $this->collection->countDocuments();
+
+        return [
+            'items' => $items,
+            'total' => $total,
+        ];
+    }
 }

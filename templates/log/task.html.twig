@@ -1,0 +1,36 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}Логи задачи #{{ taskId }}{% endblock %}
+
+{% block body %}
+    <div class="container mt-4">
+        <h1>📋 Логи задачи #{{ taskId }}</h1>
+
+        <a href="{{ path('app_logs') }}" class="btn btn-sm btn-outline-secondary mb-3">← Назад</a>
+
+        <table class="table table-striped">
+            <thead>
+            <tr>
+                <th>Действие</th>
+                <th>Старые данные</th>
+                <th>Новые данные</th>
+                <th>Дата</th>
+            </tr>
+            </thead>
+            <tbody>
+            {% for log in logs %}
+                <tr>
+                    <td><span class="badge bg-secondary">{{ log.action }}</span></td>
+                    <td><pre>{{ log.oldData|json_encode(constant('JSON_PRETTY_PRINT')) }}</pre></td>
+                    <td><pre>{{ log.newData|json_encode(constant('JSON_PRETTY_PRINT')) }}</pre></td>
+                    <td>{{ log.createdAt|date('d.m.Y H:i:s') }}</td>
+                </tr>
+            {% else %}
+                <tr>
+                    <td colspan="4" class="text-center">📭 Нет логов для этой задачи</td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+{% endblock %}

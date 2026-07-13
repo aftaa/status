@@ -39,6 +39,9 @@ security:
                 lifetime: 604800
                 path: /
 
+    role_hierarchy:
+        ROLE_ADMIN: [ ROLE_USER ]
+
     access_control:
         - { path: ^/api/login, roles: PUBLIC_ACCESS }
         - { path: ^/api/doc, roles: PUBLIC_ACCESS }
@@ -47,6 +50,7 @@ security:
         - { path: ^/register, roles: PUBLIC_ACCESS }
         - { path: ^/reset-password, roles: PUBLIC_ACCESS }
         - { path: ^/task, roles: ROLE_USER }
+        - { path: ^/logs, roles: ROLE_ADMIN }
         - { path: ^/, roles: PUBLIC_ACCESS }
 
 when@test:
