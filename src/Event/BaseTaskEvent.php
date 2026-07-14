@@ -1,8 +1,8 @@
 <?php
 
-namespace App\Dto;
+namespace App\Event;
 
-readonly class TaskEvent
+class BaseTaskEvent
 {
     public function __construct(
         public ?int               $taskId,

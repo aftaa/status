@@ -3,11 +3,11 @@
 namespace App\Service;
 
 use App\Dto\PaginatedResult;
-use App\Dto\TaskEvent;
-use App\ValueObject\Pagination\Page;
+use App\Event\BaseTaskEvent;
 use App\ValueObject\Pagination\Limit;
-use MongoDB\Collection;
+use App\ValueObject\Pagination\Page;
 use MongoDB\Client;
+use MongoDB\Collection;
 
 final class TaskEventLogger
 {
@@ -21,7 +21,7 @@ final class TaskEventLogger
         );
     }
 
-    public function log(TaskEvent $event): void
+    public function log(BaseTaskEvent $event): void
     {
         $this->collection->insertOne([
             'taskId'    => $event->taskId,

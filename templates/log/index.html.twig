@@ -22,9 +22,11 @@
                 <tr>
                     <td>{{ loop.index + (query.page.number - 1) * query.limit.value }}</td>
                     <td>
+                        {% if (log.taskId) %}
                         <a href="{{ path('app_log_task', {taskId: log.taskId}) }}">
                             #{{ log.taskId }}
                         </a>
+                        {% endif %}
                     </td>
                     <td><span class="badge bg-secondary">{{ log.action }}</span></td>
                     <td><pre>{{ log.oldData|json_encode(constant('JSON_PRETTY_PRINT')) }}</pre></td>

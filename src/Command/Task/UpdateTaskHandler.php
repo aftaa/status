@@ -2,8 +2,10 @@
 
 namespace App\Command\Task;
 
-use App\Event\TaskUpdatedEvent;
+use App\Enum\TaskAction;
+use App\Event\BaseTaskUpdatedEvent;
 use App\Factory\TaskDtoFactory;
+use App\Factory\TaskEventFactory;
 use App\Factory\TaskFactory;
 use App\Repository\TaskRepository;
 use Symfony\Component\Messenger\Attribute\AsMessageHandler;
@@ -15,7 +17,6 @@ final readonly class UpdateTaskHandler
 {
     public function __construct(
         private TaskFactory $taskFactory,
-        private TaskDtoFactory $taskDtoFactory,
         private TaskRepository $taskRepository,
         private MessageBusInterface $eventBus,
     ) {}
@@ -30,14 +31,11 @@ final readonly class UpdateTaskHandler
             throw new \InvalidArgumentException('Task not found');
         }
 
-        $oldState = $this->taskDtoFactory->createFromEntity($task);
+        $oldState = clone $task;
 
         $this->taskFactory->updateFromDto($task, $command->taskData);
         $this->taskRepository->save($task);
 
-        $this->eventBus->dispatch(new TaskUpdatedEvent(
-            oldData: $oldState,
-            newData: $command->taskData,
-        ));
+        $this->eventBus->dispatch(new BaseTaskUpdatedEvent($task->getId(), $oldState->toArray(), $task->toArray()));
     }
 }

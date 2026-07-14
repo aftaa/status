@@ -2,6 +2,7 @@
 
 namespace App\Tests\Controller;
 
+use App\Entity\User;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 
 class SecurityControllerTest extends WebTestCase
@@ -31,10 +32,15 @@ class SecurityControllerTest extends WebTestCase
         $em->persist($user);
         $em->flush();
 
-        // 2. Пытаемся залогиниться
+        // 2. Получаем CSRF-токен
+        $crawler = $client->request('GET', '/login');
+        $csrfToken = $crawler->filter('input[name="_csrf_token"]')->attr('value');
+
+        // 3. Отправляем форму логина с CSRF-токеном
         $client->request('POST', '/login', [
             'email' => 'test@example.com',
             'password' => 'password',
+            '_csrf_token' => $csrfToken,
         ]);
 
         $this->assertResponseRedirects('/task');

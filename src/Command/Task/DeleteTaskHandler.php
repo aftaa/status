@@ -2,10 +2,13 @@
 
 namespace App\Command\Task;
 
-use App\Event\TaskDeletedEvent;
+use App\Enum\TaskAction;
+use App\Event\BaseTaskDeletedEvent;
 use App\Factory\TaskDtoFactory;
+use App\Factory\TaskEventFactory;
 use App\Repository\TaskRepository;
 use Symfony\Component\Messenger\Attribute\AsMessageHandler;
+use Symfony\Component\Messenger\Exception\ExceptionInterface;
 use Symfony\Component\Messenger\MessageBusInterface;
 
 #[AsMessageHandler(bus: 'command.bus')]
@@ -13,10 +16,12 @@ final readonly class DeleteTaskHandler
 {
     public function __construct(
         private TaskRepository $taskRepository,
-        private TaskDtoFactory $taskDtoFactory,
         private MessageBusInterface $eventBus,
     ) {}
 
+    /**
+     * @throws ExceptionInterface
+     */
     public function __invoke(DeleteTaskCommand $command): void
     {
         $task = $this->taskRepository->find($command->taskId);
@@ -24,12 +29,7 @@ final readonly class DeleteTaskHandler
             throw new \InvalidArgumentException('Task not found');
         }
 
-        $taskData = $this->taskDtoFactory->createFromEntity($task);
-
-        $this->eventBus->dispatch(new TaskDeletedEvent(
-            taskData: $taskData,
-        ));
-
+        $this->eventBus->dispatch(new BaseTaskDeletedEvent($task->getId(), $task->toArray(), []));
         $this->taskRepository->remove($task);
     }
 }

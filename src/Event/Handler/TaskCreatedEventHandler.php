@@ -2,9 +2,7 @@
 
 namespace App\Event\Handler;
 
-use App\Enum\TaskAction;
-use App\Event\TaskCreatedEvent;
-use App\Factory\TaskEventFactory;
+use App\Event\BaseTaskCreatedEvent;
 use App\Service\TaskEventLogger;
 use Symfony\Component\Messenger\Attribute\AsMessageHandler;
 
@@ -12,17 +10,11 @@ use Symfony\Component\Messenger\Attribute\AsMessageHandler;
 final readonly class TaskCreatedEventHandler
 {
     public function __construct(
-        private TaskEventFactory $taskEventFactory,
         private TaskEventLogger $logger,
     ) {}
 
-    public function __invoke(TaskCreatedEvent $event): void
+    public function __invoke(BaseTaskCreatedEvent $event): void
     {
-        $taskEvent = $this->taskEventFactory->createFromDto(
-            TaskAction::CREATE,
-            $event->taskData,
-        );
-
-        $this->logger->log($taskEvent);
+        $this->logger->log($event);
     }
 }

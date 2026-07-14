@@ -2,7 +2,9 @@
 
 namespace App\Command\Task;
 
-use App\Event\TaskCreatedEvent;
+use App\Enum\TaskAction;
+use App\Event\BaseTaskCreatedEvent;
+use App\Factory\TaskEventFactory;
 use App\Factory\TaskFactory;
 use App\Repository\TaskRepository;
 use Symfony\Component\Messenger\Attribute\AsMessageHandler;
@@ -26,8 +28,6 @@ final readonly class CreateTaskHandler
         $task = $this->taskFactory->createFromDto($command->taskData);
         $this->taskRepository->save($task);
 
-        $this->eventBus->dispatch(new TaskCreatedEvent(
-            taskData: $command->taskData,
-        ));
+        $this->eventBus->dispatch(new BaseTaskCreatedEvent($task->getId(), [], $task->toArray()));
     }
 }

@@ -38,7 +38,9 @@ class TaskControllerTest extends WebTestCase
 
     public function testTasksPageWorksWhenLoggedIn(): void
     {
-        $client = static::createClient();
+        $client = static::createClient([], [
+            'HTTP_HOST' => 'localhost:8003',
+        ]);
 
         $userRepository = static::getContainer()->get(UserRepository::class);
         $testUser = $userRepository->findOneByEmail('test@example.com');
@@ -48,7 +50,7 @@ class TaskControllerTest extends WebTestCase
         }
 
         $client->loginUser($testUser);
-        $client->request('GET', '/task/');
+        $client->request('GET', '/task');
         $this->assertResponseIsSuccessful();
         $this->assertSelectorTextContains('h1', 'Список задач');
     }

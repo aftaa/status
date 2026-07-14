@@ -3,8 +3,8 @@
 namespace App\Factory;
 
 use App\Dto\TaskDto;
-use App\Dto\TaskEvent;
 use App\Enum\TaskAction;
+use App\Event\BaseTaskEvent;
 
 final class TaskEventFactory
 {
@@ -12,8 +12,8 @@ final class TaskEventFactory
         TaskAction $action,
         TaskDto $newState,
         ?TaskDto $oldState = null,
-    ): TaskEvent {
-        return new TaskEvent(
+    ): BaseTaskEvent {
+        return new BaseTaskEvent(
             taskId: null,
             action: $action->value,
             oldData: $oldState?->toArray() ?? [],
@@ -25,10 +25,10 @@ final class TaskEventFactory
         TaskAction $action,
         \App\Entity\Task $task,
         ?TaskDto $newState = null,
-    ): TaskEvent {
+    ): BaseTaskEvent {
         $oldState = $task->toArray();
 
-        return new TaskEvent(
+        return new BaseTaskEvent(
             taskId: $task->getId(),
             action: $action->value,
             oldData: $oldState,
