@@ -2,10 +2,7 @@
 
 namespace App\Command\Task;
 
-use App\Enum\TaskAction;
-use App\Event\BaseTaskDeletedEvent;
-use App\Factory\TaskDtoFactory;
-use App\Factory\TaskEventFactory;
+use App\Event\TaskDeletedEvent;
 use App\Repository\TaskRepository;
 use Symfony\Component\Messenger\Attribute\AsMessageHandler;
 use Symfony\Component\Messenger\Exception\ExceptionInterface;
@@ -29,7 +26,7 @@ final readonly class DeleteTaskHandler
             throw new \InvalidArgumentException('Task not found');
         }
 
-        $this->eventBus->dispatch(new BaseTaskDeletedEvent($task->getId(), $task->toArray(), []));
+        $this->eventBus->dispatch(new TaskDeletedEvent($task->getId(), $task->toArray()));
         $this->taskRepository->remove($task);
     }
 }

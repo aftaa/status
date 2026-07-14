@@ -2,7 +2,7 @@
 
 namespace App\Event\Handler;
 
-use App\Event\BaseTaskUpdatedEvent;
+use App\Event\TaskUpdatedEvent;
 use App\Service\TaskEventLogger;
 use Symfony\Component\Messenger\Attribute\AsMessageHandler;
 
@@ -13,7 +13,7 @@ final readonly class TaskUpdatedEventHandler
         private TaskEventLogger $logger,
     ) {}
 
-    public function __invoke(BaseTaskUpdatedEvent $event): void
+    public function __invoke(TaskUpdatedEvent $event): void
     {
         $this->logger->log($event);
     }

@@ -2,10 +2,7 @@
 
 namespace App\Command\Task;
 
-use App\Enum\TaskAction;
-use App\Event\BaseTaskUpdatedEvent;
-use App\Factory\TaskDtoFactory;
-use App\Factory\TaskEventFactory;
+use App\Event\TaskUpdatedEvent;
 use App\Factory\TaskFactory;
 use App\Repository\TaskRepository;
 use Symfony\Component\Messenger\Attribute\AsMessageHandler;
@@ -36,6 +33,6 @@ final readonly class UpdateTaskHandler
         $this->taskFactory->updateFromDto($task, $command->taskData);
         $this->taskRepository->save($task);
 
-        $this->eventBus->dispatch(new BaseTaskUpdatedEvent($task->getId(), $oldState->toArray(), $task->toArray()));
+        $this->eventBus->dispatch(new TaskUpdatedEvent($task->getId(), $oldState->toArray(), $task->toArray()));
     }
 }

@@ -2,7 +2,7 @@
 
 namespace App\Event\Handler;
 
-use App\Event\BaseTaskDeletedEvent;
+use App\Event\TaskDeletedEvent;
 use App\Service\TaskEventLogger;
 use Symfony\Component\Messenger\Attribute\AsMessageHandler;
 
@@ -13,7 +13,7 @@ final readonly class TaskDeletedEventHandler
         private TaskEventLogger $logger,
     ) {}
 
-    public function __invoke(BaseTaskDeletedEvent $event): void
+    public function __invoke(TaskDeletedEvent $event): void
     {
         $this->logger->log($event);
     }
