@@ -26,12 +26,12 @@ class LogController extends AbstractController
     #[Route('/logs', name: 'app_logs')]
     public function index(Request $request): Response
     {
-        $requestedQuery = $this->logListQueryFactory->fromRequest($request);
-        $result = $this->queryBus->dispatch(new GetLogListQuery($requestedQuery));
+        $criteria = $this->logListQueryFactory->fromRequest($request);
+        $result = $this->queryBus->dispatch(new GetLogListQuery($criteria));
 
         return $this->render('log/index.html.twig', [
             'result' => $result,
-            'query' => $requestedQuery,
+            'query' => $criteria,
         ]);
     }
 

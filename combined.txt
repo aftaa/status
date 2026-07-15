@@ -1,3 +1,530 @@
+=== config/packages/doctrine_migrations.yaml ===
+doctrine_migrations:
+    migrations_paths:
+        # namespace is arbitrary but should be different from App\Migrations
+        # as migrations classes should NOT be autoloaded
+        'DoctrineMigrations': '%kernel.project_dir%/migrations'
+    enable_profiler: false
+
+=== config/packages/web_profiler.yaml ===
+when@dev:
+    web_profiler:
+        toolbar: true
+
+    framework:
+        profiler:
+            collect_serializer_data: true
+
+when@test:
+    framework:
+        profiler:
+            collect: false
+            collect_serializer_data: true
+
+=== config/packages/validator.yaml ===
+framework:
+    validation:
+        # Enables validator auto-mapping support.
+        # For instance, basic validation constraints will be inferred from Doctrine's metadata.
+        #auto_mapping:
+        #    App\Entity\: []
+
+when@test:
+    framework:
+        validation:
+            not_compromised_password: false
+
+=== config/packages/cache.yaml ===
+framework:
+    cache:
+        # Unique name of your app: used to compute stable namespaces for cache keys.
+        #prefix_seed: your_vendor_name/app_name
+
+        # The "app" cache stores to the filesystem by default.
+        # The data in this cache should persist between deploys.
+        # Other options include:
+
+        # Redis
+        #app: cache.adapter.redis
+        #default_redis_provider: redis://localhost
+
+        # APCu (not recommended with heavy random-write workloads as memory fragmentation can cause perf issues)
+        #app: cache.adapter.apcu
+
+        # Namespaced pools use the above "app" backend by default
+        #pools:
+            #my.dedicated.cache: null
+
+        app: cache.adapter.redis
+        default_redis_provider: '%env(REDIS_URL)%'
+
+        pools:
+            cache.app.taggable:
+                adapter: cache.adapter.redis_tag_aware
+                provider: cache.default_redis_provider
+
+=== config/packages/doctrine.yaml ===
+doctrine:
+    dbal:
+        url: '%env(resolve:DATABASE_URL)%'
+
+        # IMPORTANT: You MUST configure your server version,
+        # either here or in the DATABASE_URL env var (see .env file)
+        #server_version: '16'
+
+        profiling_collect_backtrace: '%kernel.debug%'
+    orm:
+        validate_xml_mapping: true
+        naming_strategy: doctrine.orm.naming_strategy.underscore
+        identity_generation_preferences:
+            Doctrine\DBAL\Platforms\PostgreSQLPlatform: identity
+        auto_mapping: true
+        mappings:
+            App:
+                type: attribute
+                is_bundle: false
+                dir: '%kernel.project_dir%/src/Entity'
+                prefix: 'App\Entity'
+                alias: App
+
+when@test:
+    doctrine:
+        dbal:
+            # "TEST_TOKEN" is typically set by ParaTest
+            #dbname_suffix: '_test%env(default::TEST_TOKEN)%'
+            url: '%env(DATABASE_URL)%'
+            # Для SQLite в памяти (быстрее, но данные не сохраняются)
+            # driver: 'pdo_sqlite'
+            # memory: true
+
+when@prod:
+    doctrine:
+        orm:
+            query_cache_driver:
+                type: pool
+                pool: doctrine.system_cache_pool
+            result_cache_driver:
+                type: pool
+                pool: doctrine.result_cache_pool
+
+    framework:
+        cache:
+            pools:
+                doctrine.result_cache_pool:
+                    adapter: cache.app
+                doctrine.system_cache_pool:
+                    adapter: cache.system
+
+=== config/packages/nelmio_api_doc.yaml ===
+nelmio_api_doc:
+    documentation:
+        info:
+            title: 'Маячок API'
+            description: 'API для управления статусами'
+            version: '1.0.0'
+        security:
+            - bearerAuth: []
+        components:
+            securitySchemes:
+                bearerAuth:
+                    type: http
+                    scheme: bearer
+                    bearerFormat: JWT
+    areas:
+        default:
+            path_patterns: []
+        api:
+            path_patterns:
+                - ^/api/
+    models:
+        use_jms: false
+        names:
+            - { alias: Status, type: App\Entity\Status, groups: ['status:read'] }
+            - { alias: User, type: App\Entity\User, groups: ['user:read'] }
+
+=== config/packages/framework.yaml ===
+# see https://symfony.com/doc/current/reference/configuration/framework.html
+framework:
+    secret: '%env(APP_SECRET)%'
+
+    # Note that the session will be started ONLY if you read or write from it.
+    session: true
+
+    #esi: true
+    #fragments: true
+    trusted_proxies: '*'
+when@test:
+    framework:
+        test: true
+        session:
+            storage_factory_id: session.storage.factory.mock_file
+        trusted_proxies: '*'
+
+=== config/packages/lexik_jwt_authentication.yaml ===
+lexik_jwt_authentication:
+    secret_key: '%env(resolve:JWT_SECRET_KEY)%'
+    public_key: '%env(resolve:JWT_PUBLIC_KEY)%'
+    pass_phrase: '%env(JWT_PASSPHRASE)%'
+
+=== config/packages/twig.yaml ===
+twig:
+    file_name_pattern: '*.twig'
+    form_themes: ['bootstrap_5_layout.html.twig']
+
+when@test:
+    twig:
+        strict_variables: true
+
+=== config/packages/translation.yaml ===
+framework:
+    default_locale: 'ru'
+    translator:
+        default_path: '%kernel.project_dir%/translations'
+
+=== config/packages/monolog.yaml ===
+monolog:
+    channels:
+        - deprecation # Deprecations are logged in the dedicated "deprecation" channel when it exists
+
+when@dev:
+    monolog:
+        handlers:
+            main:
+                type: stream
+                path: "%kernel.logs_dir%/%kernel.environment%.log"
+                level: debug
+                channels: ["!event"]
+            console:
+                type: console
+                process_psr_3_messages: false
+                channels: ["!event", "!doctrine", "!console"]
+
+when@test:
+    monolog:
+        handlers:
+            main:
+                type: fingers_crossed
+                action_level: error
+                handler: nested
+                excluded_http_codes: [404, 405]
+                channels: ["!event"]
+            nested:
+                type: stream
+                path: "%kernel.logs_dir%/%kernel.environment%.log"
+                level: debug
+
+when@prod:
+    monolog:
+        handlers:
+            main:
+                type: fingers_crossed
+                action_level: error
+                handler: nested
+                excluded_http_codes: [404, 405]
+                channels: ["!deprecation"]
+                buffer_size: 50 # How many messages should be saved? Prevent memory leaks
+            nested:
+                type: stream
+                path: php://stderr
+                level: debug
+                formatter: monolog.formatter.json
+            console:
+                type: console
+                process_psr_3_messages: false
+                channels: ["!event", "!doctrine"]
+            deprecation:
+                type: stream
+                channels: [deprecation]
+                path: php://stderr
+                formatter: monolog.formatter.json
+
+=== config/packages/security.yaml ===
+security:
+    password_hashers:
+        Symfony\Component\Security\Core\User\PasswordAuthenticatedUserInterface: 'auto'
+
+    providers:
+        app_user_provider:
+            entity:
+                class: App\Entity\User
+                property: email
+
+    firewalls:
+        dev:
+            pattern: ^/(_profiler|_wdt|assets|build|api/doc)
+            security: false
+
+        # API — JWT
+        api:
+            pattern: ^/api
+            stateless: true
+            provider: app_user_provider
+            jwt: ~
+            json_login:
+                check_path: api_login
+                username_path: email
+                password_path: password
+                success_handler: lexik_jwt_authentication.handler.authentication_success
+                failure_handler: lexik_jwt_authentication.handler.authentication_failure
+
+        # Веб — сессии
+        main:
+            pattern: ^/(?!api)
+            lazy: true
+            provider: app_user_provider
+            custom_authenticator: App\Security\WebAuthenticator
+            logout:
+                path: app_logout
+            remember_me:
+                secret: '%kernel.secret%'
+                lifetime: 604800
+                path: /
+
+    role_hierarchy:
+        ROLE_ADMIN: [ ROLE_USER ]
+
+    access_control:
+        - { path: ^/api/login, roles: PUBLIC_ACCESS }
+        - { path: ^/api/doc, roles: PUBLIC_ACCESS }
+        - { path: ^/api, roles: IS_AUTHENTICATED_FULLY }
+        - { path: ^/login, roles: PUBLIC_ACCESS }
+        - { path: ^/register, roles: PUBLIC_ACCESS }
+        - { path: ^/reset-password, roles: PUBLIC_ACCESS }
+        - { path: ^/task, roles: ROLE_USER }
+        - { path: ^/logs, roles: ROLE_ADMIN }
+        - { path: ^/, roles: PUBLIC_ACCESS }
+
+when@test:
+    security:
+        password_hashers:
+            Symfony\Component\Security\Core\User\PasswordAuthenticatedUserInterface:
+                algorithm: auto
+                cost: 4
+                time_cost: 3
+                memory_cost: 10
+
+=== config/packages/reset_password.yaml ===
+symfonycasts_reset_password:
+    request_password_repository: App\Repository\ResetPasswordRequestRepository
+
+=== config/packages/asset_mapper.yaml ===
+framework:
+    asset_mapper:
+        # The paths to make available to the asset mapper.
+        paths:
+            - assets/
+        missing_import_mode: strict
+
+when@prod:
+    framework:
+        asset_mapper:
+            missing_import_mode: warn
+
+=== config/packages/notifier.yaml ===
+framework:
+    notifier:
+        chatter_transports:
+        texter_transports:
+        channel_policy:
+            # use chat/slack, chat/telegram, sms/twilio or sms/nexmo
+            urgent: ['email']
+            high: ['email']
+            medium: ['email']
+            low: ['email']
+        admin_recipients:
+            - { email: admin@example.com }
+
+=== config/packages/ux_turbo.yaml ===
+# Enable stateless CSRF protection for forms and logins/logouts
+framework:
+    csrf_protection:
+        check_header: true
+
+=== config/packages/messenger.yaml ===
+framework:
+    messenger:
+        # 1. Явно указываем транспорт для упавших сообщений
+        failure_transport: failed
+
+        transports:
+            async:
+                dsn: '%env(MESSENGER_TRANSPORT_DSN)%'
+                # Настройка повторов отличная, добавим только начальную задержку
+                retry_strategy:
+                    max_retries: 3
+                    delay: 1000          # Первая попытка через 1 секунду
+                    multiplier: 2        # Каждая следующая задержка удваивается (1с -> 2с -> 4с)
+
+            failed: 'doctrine://default?queue_name=failed'
+
+        # 2. Делаем command.bus дефолтной. Запросы (Query) ВСЕГДА нужно вызывать явно через QueryBus
+        default_bus: command.bus
+
+        buses:
+            event.bus: ~
+
+            command.bus:
+                # Отключаем дефолтные мидлвары, если нужно строго контролировать транзакции
+                middleware:
+                    - doctrine_transaction
+
+            query.bus:
+                # Для запросов запрещаем оборачивать всё в транзакции базы данных (прирост скорости)
+                middleware: []
+
+        routing:
+            # Тяжёлые команды — в асинхронную очередь
+
+            # Рекомендация: если команд станет много, лучше маркировать их интерфейсом
+            'App\Contract\AsyncMessageInterface': async
+
+=== config/packages/mailer.yaml ===
+framework:
+    mailer:
+        dsn: '%env(MAILER_DSN)%'
+
+=== config/packages/csrf.yaml ===
+# Enable stateless CSRF protection for forms and logins/logouts
+framework:
+    form:
+        csrf_protection:
+            token_id: submit
+
+    csrf_protection:
+        stateless_token_ids:
+            - submit
+            - authenticate
+            - logout
+
+=== config/packages/debug.yaml ===
+when@dev:
+    debug:
+        # Forwards VarDumper Data clones to a centralized server allowing to inspect dumps on CLI or in your browser.
+        # See the "server:dump" command to start a new server.
+        dump_destination: "tcp://%env(VAR_DUMPER_SERVER)%"
+
+=== config/packages/routing.yaml ===
+framework:
+    router:
+        # Configure how to generate URLs in non-HTTP contexts, such as CLI commands.
+        # See https://symfony.com/doc/current/routing.html#generating-urls-in-commands
+        default_uri: '%env(DEFAULT_URI)%'
+
+when@prod:
+    framework:
+        router:
+            strict_requirements: null
+
+=== config/packages/property_info.yaml ===
+framework:
+    property_info:
+        with_constructor_extractor: true
+
+=== config/packages/mercure.yaml ===
+mercure:
+    hubs:
+        default:
+            url: '%env(default::MERCURE_URL)%'
+            public_url: '%env(default::MERCURE_PUBLIC_URL)%'
+            jwt:
+                secret: '%env(MERCURE_JWT_SECRET)%'
+                publish: '*'
+
+=== config/routes.yaml ===
+# yaml-language-server: $schema=../vendor/symfony/routing/Loader/schema/routing.schema.json
+
+# This file is the entry point to configure the routes of your app.
+# Methods with the #[Route] attribute are automatically imported.
+# See also https://symfony.com/doc/current/routing.html
+
+# To list all registered routes, run the following command:
+#   bin/console debug:router
+
+controllers:
+    resource: routing.controllers
+
+=== config/routes/web_profiler.yaml ===
+when@dev:
+    web_profiler_wdt:
+        resource: '@WebProfilerBundle/Resources/config/routing/wdt.php'
+        prefix: /_wdt
+
+    web_profiler_profiler:
+        resource: '@WebProfilerBundle/Resources/config/routing/profiler.php'
+        prefix: /_profiler
+
+=== config/routes/nelmio_api_doc.yaml ===
+app.swagger:
+    path: /api/doc.json
+    methods: GET
+    defaults:
+        _controller: nelmio_api_doc.controller.swagger
+        area: api
+
+app.swagger_ui:
+    path: /api/doc
+    controller: nelmio_api_doc.controller.swagger_ui
+    defaults:
+        area: api
+
+=== config/routes/framework.yaml ===
+when@dev:
+    _errors:
+        resource: '@FrameworkBundle/Resources/config/routing/errors.php'
+        prefix: /_error
+
+=== config/routes/security.yaml ===
+_security_logout:
+    resource: security.route_loader.logout
+    type: service
+
+=== config/services.yaml ===
+# yaml-language-server: $schema=../vendor/symfony/dependency-injection/Loader/schema/services.schema.json
+services:
+    _defaults:
+        autowire: true
+        autoconfigure: true
+
+    App\:
+        resource: '../src/'
+        exclude:
+            - '../src/DependencyInjection/'
+            - '../src/Entity/'
+            - '../src/Kernel.php'
+
+    _instanceof:
+        App\Strategy\SortingStrategyInterface:
+            tags: ['app.sorting_strategy']
+        App\Specification\SpecificationInterface:
+            tags: ['app.task_specification']
+
+    App\Factory\SortingStrategyFactory:
+        arguments:
+            - !tagged_iterator app.sorting_strategy
+    App\Factory\SpecificationFactory:
+        arguments:
+            - !tagged_iterator app.task_specification
+
+    App\Service\CachedTaskLister:
+        decorates: App\Service\TaskLister
+        arguments:
+            $delegate: '@.inner'
+            $cache: '@cache.app.taggable'
+
+    App\Service\TaskListerInterface: '@App\Service\CachedTaskLister'
+
+    App\Event\Listener\TaskCacheListener:
+        arguments:
+            $cache: '@cache.app.taggable'
+        tags:
+            - { name: 'doctrine.event_listener', event: 'postPersist' }
+            - { name: 'doctrine.event_listener', event: 'postUpdate' }
+            - { name: 'doctrine.event_listener', event: 'postRemove' }
+
+    MongoDB\Client:
+        arguments:
+            - '%env(MONGODB_URL)%'
+
 === src/Controller/IndexController.php ===
 <?php
 
@@ -948,8 +1475,8 @@ class LogListQueryFactory
 namespace App\Factory;
 
 use App\Dto\TaskDto;
-use App\Dto\TaskEvent;
 use App\Enum\TaskAction;
+use App\Event\BaseTaskEvent;
 
 final class TaskEventFactory
 {
@@ -957,8 +1484,8 @@ final class TaskEventFactory
         TaskAction $action,
         TaskDto $newState,
         ?TaskDto $oldState = null,
-    ): TaskEvent {
-        return new TaskEvent(
+    ): BaseTaskEvent {
+        return new BaseTaskEvent(
             taskId: null,
             action: $action->value,
             oldData: $oldState?->toArray() ?? [],
@@ -970,10 +1497,10 @@ final class TaskEventFactory
         TaskAction $action,
         \App\Entity\Task $task,
         ?TaskDto $newState = null,
-    ): TaskEvent {
+    ): BaseTaskEvent {
         $oldState = $task->toArray();
 
-        return new TaskEvent(
+        return new BaseTaskEvent(
             taskId: $task->getId(),
             action: $action->value,
             oldData: $oldState,
@@ -1338,10 +1865,9 @@ class ChangePasswordFormType extends AbstractType
 namespace App\Event;
 
 use App\Contract\AsyncMessageInterface;
-use App\Dto\TaskEvent;
 use App\Enum\TaskAction;
 
-final class TaskUpdatedEvent extends TaskEvent implements AsyncMessageInterface
+final class TaskUpdatedEvent extends BaseTaskEvent implements AsyncMessageInterface
 {
     public function __construct(public ?int $taskId, public array $oldData, public array $newData)
     {
@@ -1406,14 +1932,31 @@ readonly class TaskCacheListener
 namespace App\Event;
 
 use App\Contract\AsyncMessageInterface;
-use App\Dto\TaskEvent;
 use App\Enum\TaskAction;
 
-final class TaskDeletedEvent extends TaskEvent implements AsyncMessageInterface
+final class TaskDeletedEvent extends BaseTaskEvent implements AsyncMessageInterface
 {
-    public function __construct(public ?int $taskId, public array $oldData, public array $newData)
+    public function __construct(public ?int $taskId, public array $oldData)
     {
-        parent::__construct($taskId, TaskAction::DELETE->value, $oldData, $newData);
+        parent::__construct($taskId, TaskAction::DELETE->value, $oldData, []);
+    }
+}
+
+=== src/Event/BaseTaskEvent.php ===
+<?php
+
+namespace App\Event;
+
+class BaseTaskEvent
+{
+    public function __construct(
+        public ?int               $taskId,
+        public string             $action,
+        public array              $oldData,
+        public array              $newData,
+        public \DateTimeImmutable $createdAt = new \DateTimeImmutable(),
+    ) {
+
     }
 }
 
@@ -1489,14 +2032,13 @@ final readonly class TaskDeletedEventHandler
 namespace App\Event;
 
 use App\Contract\AsyncMessageInterface;
-use App\Dto\TaskEvent;
 use App\Enum\TaskAction;
 
-final class TaskCreatedEvent extends TaskEvent implements AsyncMessageInterface
+final class TaskCreatedEvent extends BaseTaskEvent implements AsyncMessageInterface
 {
-    public function __construct(public ?int $taskId, public array $oldData, public array $newData)
+    public function __construct(public ?int $taskId, public array $newData)
     {
-        parent::__construct($taskId, TaskAction::CREATE->value, $oldData, $newData);
+        parent::__construct($taskId, TaskAction::CREATE->value, [], $newData);
     }
 }
 
@@ -1506,11 +2048,11 @@ final class TaskCreatedEvent extends TaskEvent implements AsyncMessageInterface
 namespace App\Service;
 
 use App\Dto\PaginatedResult;
-use App\Dto\TaskEvent;
-use App\ValueObject\Pagination\Page;
+use App\Event\BaseTaskEvent;
 use App\ValueObject\Pagination\Limit;
-use MongoDB\Collection;
+use App\ValueObject\Pagination\Page;
 use MongoDB\Client;
+use MongoDB\Collection;
 
 final class TaskEventLogger
 {
@@ -1524,7 +2066,7 @@ final class TaskEventLogger
         );
     }
 
-    public function log(TaskEvent $event): void
+    public function log(BaseTaskEvent $event): void
     {
         $this->collection->insertOne([
             'taskId'    => $event->taskId,
@@ -1786,24 +2328,6 @@ readonly class PaginatedResult
     public function getTotalPages(): int
     {
         return (int) ceil($this->totalItems / $this->itemsPerPage);
-    }
-}
-
-=== src/Dto/TaskEvent.php ===
-<?php
-
-namespace App\Dto;
-
-class TaskEvent
-{
-    public function __construct(
-        public ?int               $taskId,
-        public string             $action,
-        public array              $oldData,
-        public array              $newData,
-        public \DateTimeImmutable $createdAt = new \DateTimeImmutable(),
-    ) {
-
     }
 }
 
@@ -2526,9 +3050,7 @@ enum TaskOrder: string
 
 namespace App\Command\Task;
 
-use App\Enum\TaskAction;
 use App\Event\TaskCreatedEvent;
-use App\Factory\TaskEventFactory;
 use App\Factory\TaskFactory;
 use App\Repository\TaskRepository;
 use Symfony\Component\Messenger\Attribute\AsMessageHandler;
@@ -2552,7 +3074,7 @@ final readonly class CreateTaskHandler
         $task = $this->taskFactory->createFromDto($command->taskData);
         $this->taskRepository->save($task);
 
-        $this->eventBus->dispatch(new TaskCreatedEvent($task->getId(), [], $task->toArray()));
+        $this->eventBus->dispatch(new TaskCreatedEvent($task->getId(), $task->toArray()));
     }
 }
 
@@ -2561,10 +3083,7 @@ final readonly class CreateTaskHandler
 
 namespace App\Command\Task;
 
-use App\Enum\TaskAction;
 use App\Event\TaskUpdatedEvent;
-use App\Factory\TaskDtoFactory;
-use App\Factory\TaskEventFactory;
 use App\Factory\TaskFactory;
 use App\Repository\TaskRepository;
 use Symfony\Component\Messenger\Attribute\AsMessageHandler;
@@ -2633,10 +3152,7 @@ readonly class UpdateTaskCommand
 
 namespace App\Command\Task;
 
-use App\Enum\TaskAction;
 use App\Event\TaskDeletedEvent;
-use App\Factory\TaskDtoFactory;
-use App\Factory\TaskEventFactory;
 use App\Repository\TaskRepository;
 use Symfony\Component\Messenger\Attribute\AsMessageHandler;
 use Symfony\Component\Messenger\Exception\ExceptionInterface;
@@ -2660,7 +3176,7 @@ final readonly class DeleteTaskHandler
             throw new \InvalidArgumentException('Task not found');
         }
 
-        $this->eventBus->dispatch(new TaskDeletedEvent($task->getId(), $task->toArray(), []));
+        $this->eventBus->dispatch(new TaskDeletedEvent($task->getId(), $task->toArray()));
         $this->taskRepository->remove($task);
     }
 }
@@ -3285,6 +3801,1148 @@ final readonly class GetLogByTaskHandler
     public function __invoke(GetLogByTaskQuery $query): array
     {
         return $this->logger->findByTaskId($query->taskId);
+    }
+}
+
+=== templates/index/index.html.twig ===
+{% extends 'base.html.twig' %}
+
+{% block body %}
+
+{% endblock %}
+
+=== templates/log/index.html.twig ===
+{% extends 'base.html.twig' %}
+
+{% block title %}Логи событий{% endblock %}
+
+{% block body %}
+    <div class="container mt-4">
+        <h1>📋 Логи событий</h1>
+
+        <table class="table table-striped table-hover">
+            <thead>
+            <tr>
+                <th>#</th>
+                <th>Задача</th>
+                <th>Действие</th>
+                <th>Старые данные</th>
+                <th>Новые данные</th>
+                <th>Дата</th>
+            </tr>
+            </thead>
+            <tbody>
+            {% for log in result.items %}
+                <tr>
+                    <td>{{ loop.index + (query.page.number - 1) * query.limit.value }}</td>
+                    <td>
+                        {% if (log.taskId) %}
+                        <a href="{{ path('app_log_task', {taskId: log.taskId}) }}">
+                            #{{ log.taskId }}
+                        </a>
+                        {% endif %}
+                    </td>
+                    <td><span class="badge bg-secondary">{{ log.action }}</span></td>
+                    <td><pre>{{ log.oldData|json_encode(constant('JSON_PRETTY_PRINT')) }}</pre></td>
+                    <td><pre>{{ log.newData|json_encode(constant('JSON_PRETTY_PRINT')) }}</pre></td>
+                    <td>{{ log.createdAt|date('d.m.Y H:i:s') }}</td>
+                </tr>
+            {% else %}
+                <tr>
+                    <td colspan="6" class="text-center">📭 Нет логов</td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+
+        {% if result.totalPages > 1 %}
+            <nav>
+                <ul class="pagination">
+                    {% for i in 1..result.totalPages %}
+                        <li class="page-item {{ result.currentPage == query.page ? 'active' : '' }}">
+                            <a class="page-link" href="{{ path('app_logs', {page: i, limit: query.limit}) }}">{{ i }}</a>
+                        </li>
+                    {% endfor %}
+                </ul>
+            </nav>
+        {% endif %}
+    </div>
+{% endblock %}
+
+=== templates/log/task.html.twig ===
+{% extends 'base.html.twig' %}
+
+{% block title %}Логи задачи #{{ taskId }}{% endblock %}
+
+{% block body %}
+    <div class="container mt-4">
+        <h1>📋 Логи задачи #{{ taskId }}</h1>
+
+        <a href="{{ path('app_logs') }}" class="btn btn-sm btn-outline-secondary mb-3">← Назад</a>
+
+        <table class="table table-striped">
+            <thead>
+            <tr>
+                <th>Действие</th>
+                <th>Старые данные</th>
+                <th>Новые данные</th>
+                <th>Дата</th>
+            </tr>
+            </thead>
+            <tbody>
+            {% for log in logs %}
+                <tr>
+                    <td><span class="badge bg-secondary">{{ log.action }}</span></td>
+                    <td><pre>{{ log.oldData|json_encode(constant('JSON_PRETTY_PRINT')) }}</pre></td>
+                    <td><pre>{{ log.newData|json_encode(constant('JSON_PRETTY_PRINT')) }}</pre></td>
+                    <td>{{ log.createdAt|date('d.m.Y H:i:s') }}</td>
+                </tr>
+            {% else %}
+                <tr>
+                    <td colspan="4" class="text-center">📭 Нет логов для этой задачи</td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+{% endblock %}
+
+=== templates/base.html.twig ===
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}Welcome!{% endblock %}</title>
+    <link rel="icon"
+          href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 128 128%22><text y=%221.2em%22 font-size=%2296%22>⚫️</text><text y=%221.3em%22 x=%220.2em%22 font-size=%2276%22 fill=%22%23fff%22>sf</text></svg>">
+    {% block stylesheets %}
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5/dist/css/bootstrap.min.css">
+    {% endblock %}
+
+    {% block javascripts %}
+        {% block importmap %}{{ importmap('app') }}{% endblock %}
+        <script src="https://cdn.jsdelivr.net/npm/bootstrap@5/dist/js/bootstrap.bundle.min.js" defer></script>
+    {% endblock %}
+
+    {% set frankenphpHotReload = app.request.server.get('FRANKENPHP_HOT_RELOAD') %}
+    {% if frankenphpHotReload %}
+        <meta name="frankenphp-hot-reload:url" content="{{ frankenphpHotReload }}">
+        <script src="https://cdn.jsdelivr.net/npm/idiomorph"></script>
+        <script src="https://cdn.jsdelivr.net/npm/frankenphp-hot-reload/+esm" type="module"></script>
+    {% endif %}
+</head>
+<body>
+<div class="container mt-4">
+    {% if app.user %}
+        <a href="{{ path('app_logout') }}">Logout</a> |
+    {% else %}
+        <a href="{{ path('app_login') }}">Login</a> |
+        <a href="{{ path('app_register') }}">Register</a> |
+        <a href="{{ path('app_forgot_password_request') }}">Reset password</a> |
+    {% endif %}
+    <a href="{{ path('app_tasks') }}">Tasks</a> |
+    <a href="{{ path('app_logs') }}">Logs</a>
+</div>
+{% block body %}{% endblock %}
+</body>
+</html>
+
+=== templates/task/new.html.twig ===
+{% extends 'base.html.twig' %}
+
+{% block title %}New Task{% endblock %}
+
+{% block body %}
+<div class="container mt-4">
+    <h1>Create new Task</h1>
+
+    {{ include('task/_form.html.twig') }}
+
+    <a href="{{ path('app_tasks') }}">back to list</a>
+</div>
+{% endblock %}
+
+=== templates/task/history.html.twig ===
+{% extends 'base.html.twig' %}
+
+{% block title %}История задачи #{{ task.id }}{% endblock %}
+
+{% block body %}
+    <div class="container mt-4">
+        <h1>История задачи #{{ task.id }}: {{ task.name }}</h1>
+
+        <table class="table table-striped">
+            <thead>
+            <tr>
+                <th>Дата</th>
+                <th>Действие</th>
+                <th>Старые данные</th>
+                <th>Новые данные</th>
+            </tr>
+            </thead>
+            <tbody>
+            {% for event in events %}
+                <tr>
+                    <td>{{ event.createdAt|date('d.m.Y H:i:s') }}</td>
+                    <td>{{ event.action }}</td>
+                    <td>{{ event.oldData | json_encode }}</td>
+                    <td>{{ event.newData | json_encode }}</td>
+                </tr>
+            {% else %}
+                <tr>
+                    <td colspan="4">Нет событий</td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+
+        <a href="{{ path('app_tasks') }}">← Назад к списку</a>
+    </div>
+{% endblock %}
+
+=== templates/task/_delete_form.html.twig ===
+<form method="post" action="{{ path('app_task_delete', {'id': task.id}) }}" onsubmit="return confirm('Are you sure you want to delete this item?');">
+    <input type="hidden" name="_token" value="{{ csrf_token('delete' ~ task.id) }}">
+    <button class="btn btn-sm btn-outline-danger">Delete</button>
+</form>
+
+=== templates/task/index.html.twig ===
+{% extends 'base.html.twig' %}
+
+{% block title %}Список задач{% endblock %}
+
+{% block body %}
+
+    <div class="container mt-4">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h1>Список задач</h1>
+            <a href="{{ path('app_task_new') }}" class="btn btn-success">
+                ➕ Создать задачу
+            </a>
+        </div>
+
+        <div class="card mb-4">
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="btn-group" role="group">
+                            <a href="{{ path('app_tasks', {page: result.currentPage, filter: 'all', sort: query.sort.value, order: query.order.value}) }}"
+                               class="btn {{ query.filter.isAll ? 'btn-primary' : 'btn-outline-secondary' }}">Все</a>
+                            <a href="{{ path('app_tasks', {page: result.currentPage, filter: 'completed', sort: query.sort.value, order: query.order.value}) }}"
+                               class="btn {{ query.filter.isCompleted ? 'btn-primary' : 'btn-outline-secondary' }}">Выполненные</a>
+                            <a href="{{ path('app_tasks', {page: result.currentPage, filter: 'not_completed', sort: query.sort.value, order: query.order.value}) }}"
+                               class="btn {{ query.filter.isNotCompleted ? 'btn-primary' : 'btn-outline-secondary' }}">Не выполненные</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="table-responsive">
+            <table class="table table-striped table-hover">
+                <thead>
+                <tr>
+                    <th>
+                        <a href="{{ path('app_tasks', {filter: query.filter.value, sort: enum('App\\Enum\\TaskSort').ID.value, order: (query.sort.isId and query.order.isAsc) ? enum('App\\Enum\\TaskOrder').DESC.value : enum('App\\Enum\\TaskOrder').ASC.value, page: result.currentPage}) }}">
+                            ID
+                        </a>
+                    </th>
+                    <th>
+                        <a href="{{ path('app_tasks', {filter: query.filter.value, sort: 'name', order: (query.sort.isName and query.order.isAsc) ? enum('App\\Enum\\TaskOrder').DESC.value : enum('App\\Enum\\TaskOrder').ASC.value, page: result.currentPage}) }}">
+                            Название
+                            {% if query.sort.isName %}
+                                {{ query.order.isAsc ? ' ▲' : ' ▼' }}
+                            {% endif %}
+                        </a>
+                    </th>
+                    <th>Статус</th>
+                    <th>
+                        <a href="{{ path('app_tasks', {filter: query.filter.value, sort: 'created_at', order: (query.sort.isCreatedAt and query.order.isAsc) ? 'desc' : 'asc', page: result.currentPage}) }}">
+                            Дата создания
+                            {% if query.sort.isCreatedAt %}
+                                {{ query.order.isAsc ? ' ▲' : ' ▼' }}
+                            {% endif %}
+                        </a>
+                    </th>
+                    <th class="text-end">Действия</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for task in result.items %}
+                    <tr>
+                        <td>{{ task.id }}</td>
+                        <td>{{ task.name }}</td>
+                        <td>
+                            {% if task.isCompleted %}
+                                <span class="badge bg-success">✅ Выполнена</span>
+                            {% else %}
+                                <span class="badge bg-secondary">❌ Не выполнена</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ task.createdAt ? task.createdAt|date('d.m.Y H:i') : '' }}</td>
+                        <td class="text-end">
+                            <a href="{{ path('app_task_edit', {'id': task.id}) }}" class="btn btn-sm btn-outline-primary me-1">✏️ Редактировать</a>
+                            <form method="post" action="{{ path('app_task_delete', {'id': task.id}) }}" onsubmit="return confirm('Удалить задачу?');" style="display: inline-block;">
+                                <input type="hidden" name="_token" value="{{ csrf_token('delete' ~ task.id) }}">
+                                <button class="btn btn-sm btn-outline-danger">🗑️ Удалить</button>
+                            </form>
+                        </td>
+                    </tr>
+                {% else %}
+                    <tr>
+                        <td colspan="4" class="text-center">
+                            📭 Нет задач. Самое время создать первую!
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        {# Пагинация #}
+        {% if result.totalPages > 1 %}
+            <nav aria-label="Page navigation" class="mt-4">
+                <ul class="pagination justify-content-center">
+                    {# Previous page #}
+                    {% if result.currentPage > 1 %}
+                        <li class="page-item">
+                            <a class="page-link" href="{{ path('app_tasks', {page: result.currentPage - 1, filter: query.filter.value, sort: query.sort.value, order: query.order.value}) }}">
+                                &laquo; Назад
+                            </a>
+                        </li>
+                    {% else %}
+                        <li class="page-item disabled">
+                            <span class="page-link">&laquo; Назад</span>
+                        </li>
+                    {% endif %}
+
+                    {# Страницы #}
+                    {% set startPage = max(1, result.currentPage - 2) %}
+                    {% set endPage = min(result.totalPages, result.currentPage + 2) %}
+
+                    {% if startPage > 1 %}
+                        <li class="page-item">
+                            <a class="page-link" href="{{ path('app_tasks', {page: 1, filter: query.filter.value, sort: query.sort.value, order: query.order.value}) }}">1</a>
+                        </li>
+                        {% if startPage > 2 %}
+                            <li class="page-item disabled"><span class="page-link">...</span></li>
+                        {% endif %}
+                    {% endif %}
+
+                    {% for pageNum in startPage..endPage %}
+                        <li class="page-item {{ pageNum == result.currentPage ? 'active' : '' }}">
+                            <a class="page-link" href="{{ path('app_tasks', {page: pageNum, filter: query.filter.value, sort: query.sort.value, order: query.order.value}) }}">{{ pageNum }}</a>
+                        </li>
+                    {% endfor %}
+
+                    {% if endPage < result.totalPages %}
+                        {% if endPage < result.totalPages - 1 %}
+                            <li class="page-item disabled"><span class="page-link">...</span></li>
+                        {% endif %}
+                        <li class="page-item">
+                            <a class="page-link" href="{{ path('app_tasks', {page: result.totalPages, filter: query.filter.value, sort: query.sort.value, order: query.order.value}) }}">{{ result.totalPages }}</a>
+                        </li>
+                    {% endif %}
+
+                    {# Next page #}
+                    {% if result.currentPage < result.totalPages %}
+                        <li class="page-item">
+                            <a class="page-link" href="{{ path('app_tasks', {page: result.currentPage + 1, filter: query.filter.value, sort: query.sort.value, order: query.order.value}) }}">
+                                Вперёд &raquo;
+                            </a>
+                        </li>
+                    {% else %}
+                        <li class="page-item disabled">
+                            <span class="page-link">Вперёд &raquo;</span>
+                        </li>
+                    {% endif %}
+                </ul>
+            </nav>
+        {% endif %}
+    </div>
+{% endblock %}
+
+=== templates/task/show.html.twig ===
+{% extends 'base.html.twig' %}
+
+{% block title %}Task{% endblock %}
+
+{% block body %}
+<div class="container mt-4">
+    <h1>Task</h1>
+
+    <table class="table">
+        <tbody>
+            <tr>
+                <th>Id</th>
+                <td>{{ task.id }}</td>
+            </tr>
+            <tr>
+                <th>Name</th>
+                <td>{{ task.name }}</td>
+            </tr>
+            <tr>
+                <th>Is_completed</th>
+                <td>{{ task.isCompleted ? 'Yes' : 'No' }}</td>
+            </tr>
+            <tr>
+                <th>Created_at</th>
+                <td>{{ task.createdAt ? task.createdAt|date('Y-m-d H:i:s') : '' }}</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <a href="{{ path('app_tasks') }}">back to list</a>
+
+    <a href="{{ path('app_task_edit', {'id': task.id}) }}">edit</a>
+</div>
+{% endblock %}
+
+=== templates/task/edit.html.twig ===
+{% extends 'base.html.twig' %}
+
+{% block title %}Edit Task{% endblock %}
+
+{% block body %}
+<div class="container mt-4">
+    <h1>Edit Task</h1>
+
+    {{ include('task/_form.html.twig', {'button_label': 'Update'}) }}
+
+    <a href="{{ path('app_tasks') }}">back to list</a>
+</div>
+{% endblock %}
+
+=== templates/task/_form.html.twig ===
+{{ form_start(form) }}
+    {{ form_errors(form) }}
+    {{ form_widget(form) }}
+<button class="btn btn-sm btn-outline-primary">{{ button_label|default('Save') }}</button>
+{{ form_end(form) }}
+
+=== templates/security/login.html.twig ===
+{% extends 'base.html.twig' %}
+
+{% block title %}Log in!{% endblock %}
+
+{% block body %}
+<div class="container mt-4">
+<form method="post">
+    {% if error %}
+        <div class="alert alert-danger">{{ error.messageKey|trans(error.messageData, 'security') }}</div>
+    {% endif %}
+
+    {% if app.user %}
+        <div class="mb-3">
+            You are logged in as {{ app.user.userIdentifier }}, <a href="{{ logout_path() }}">Logout</a>
+        </div>
+    {% endif %}
+
+    <h1 class="h3 mb-3 font-weight-normal">Please sign in</h1>
+    <label for="inputEmail">Email</label>
+    <input type="email" value="{{ last_username }}" name="email" id="inputEmail" class="form-control" autocomplete="email" required autofocus>
+    <label for="inputPassword">Password</label>
+    <input type="password" name="password" id="inputPassword" class="form-control" autocomplete="current-password" required>
+    <input type="hidden" name="_csrf_token" data-controller="csrf-protection" value="{{ csrf_token('authenticate') }}">
+
+    <div class="checkbox mb-3">
+        <label>
+            <input type="checkbox" name="_remember_me"> Remember me
+        </label>
+    </div>
+
+    <button class="btn btn-lg btn-primary" type="submit">
+        Sign in
+    </button>
+</form>
+</div>
+{% endblock %}
+
+=== templates/registration/confirmation_email.html.twig ===
+{% extends 'base.html.twig' %}
+
+{% block body %}
+
+    <div class="container mt-4">
+        <h1>Hi! Please confirm your email!</h1>
+
+        <p>
+            Please confirm your email address by clicking the following link: <br><br>
+            <a href="{{ signedUrl|raw }}">Confirm my Email</a>.
+            This link will expire in {{ expiresAtMessageKey|trans(expiresAtMessageData, 'VerifyEmailBundle') }}.
+        </p>
+
+        <p>
+            Cheers!
+        </p>
+    </div>
+
+{% endblock %}
+
+=== templates/registration/register.html.twig ===
+{% extends 'base.html.twig' %}
+
+{% block title %}Register{% endblock %}
+
+{% block body %}
+<div class="container mt-4">
+    {% for flash_error in app.flashes('verify_email_error') %}
+        <div class="alert alert-danger" role="alert">{{ flash_error }}</div>
+    {% endfor %}
+
+    <h1>Register</h1>
+
+    {{ form_errors(registrationForm) }}
+
+    {{ form_start(registrationForm) }}
+        {{ form_row(registrationForm.email) }}
+        {{ form_row(registrationForm.displayName) }}
+        {{ form_row(registrationForm.plainPassword, {
+            label: 'Password'
+        }) }}
+        {{ form_row(registrationForm.agreeTerms) }}
+
+        <button type="submit" class="btn">Register</button>
+    {{ form_end(registrationForm) }}
+</div>
+{% endblock %}
+
+=== templates/reset_password/request.html.twig ===
+{% extends 'base.html.twig' %}
+
+{% block title %}Reset your password{% endblock %}
+
+{% block body %}
+<div class="container mt-4">
+    {% for flash_error in app.flashes('reset_password_error') %}
+        <div class="alert alert-danger" role="alert">{{ flash_error }}</div>
+    {% endfor %}
+    <h1>Reset your password</h1>
+
+    {{ form_start(requestForm) }}
+        {{ form_row(requestForm.email) }}
+        <div>
+            <small>
+                Enter your email address, and we will send you a
+                link to reset your password.
+            </small>
+        </div>
+
+        <button class="btn btn-primary">Send password reset email</button>
+    {{ form_end(requestForm) }}
+</div>
+{% endblock %}
+
+=== templates/reset_password/reset.html.twig ===
+{% extends 'base.html.twig' %}
+
+{% block title %}Reset your password{% endblock %}
+
+{% block body %}
+<div class="container mt-4">
+    <h1>Reset your password</h1>
+
+    {{ form_start(resetForm) }}
+        {{ form_row(resetForm.plainPassword) }}
+        <button class="btn btn-primary">Reset password</button>
+    {{ form_end(resetForm) }}
+</div>
+{% endblock %}
+
+=== templates/reset_password/check_email.html.twig ===
+{% extends 'base.html.twig' %}
+
+{% block title %}Password Reset Email Sent{% endblock %}
+
+{% block body %}
+<div class="container mt-4">
+    <p>
+        If an account matching your email exists, then an email was just sent that contains a link that you can use to reset your password.
+        This link will expire in {{ resetToken.expirationMessageKey|trans(resetToken.expirationMessageData, 'ResetPasswordBundle') }}.
+    </p>
+    <p>If you don't receive an email please check your spam folder or <a href="{{ path('app_forgot_password_request') }}">try again</a>.</p>
+</div>
+{% endblock %}
+
+=== templates/reset_password/email.html.twig ===
+<h1>Hi!</h1>
+
+<p>To reset your password, please visit the following link</p>
+
+<a href="{{ url('app_reset_password', {token: resetToken.token}) }}">{{ url('app_reset_password', {token: resetToken.token}) }}</a>
+
+<p>This link will expire in {{ resetToken.expirationMessageKey|trans(resetToken.expirationMessageData, 'ResetPasswordBundle') }}.</p>
+
+<p>Cheers!</p>
+
+=== tests/Controller/RegistrationControllerTest.php ===
+<?php
+
+namespace App\Tests\Controller;
+
+use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
+
+class RegistrationControllerTest extends WebTestCase
+{
+    public function testRegistrationPageLoads(): void
+    {
+        $client = static::createClient();
+        $client->request('GET', '/register');
+
+        $this->assertResponseIsSuccessful();
+        $this->assertSelectorExists('form');
+    }
+
+    public function testRegistrationWithValidData(): void
+    {
+        $client = static::createClient();
+        $client->request('GET', '/register');
+
+        $client->submitForm('Register', [
+            'registration_form[email]' => 'test@example.com',
+            'registration_form[plainPassword]' => 'password123',
+            'registration_form[agreeTerms]' => '1',
+        ]);
+
+        // Вариант 1: просто строка
+        $this->assertResponseRedirects('/task');
+
+        // Вариант 2: через URL-генератор (лучше)
+        // $this->assertResponseRedirects($client->getContainer()->get('router')->generate('app_tasks'));
+    }
+}
+
+=== tests/Controller/ResetPasswordControllerTest.php ===
+<?php
+
+namespace App\Tests\Controller;
+
+use App\Entity\User;
+use App\Repository\UserRepository;
+use Doctrine\ORM\EntityManagerInterface;
+use Symfony\Bundle\FrameworkBundle\KernelBrowser;
+use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
+use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
+
+class ResetPasswordControllerTest extends WebTestCase
+{
+    private KernelBrowser $client;
+    private EntityManagerInterface $em;
+    private UserRepository $userRepository;
+
+    protected function setUp(): void
+    {
+        $this->client = static::createClient();
+        $container = static::getContainer();
+
+        /** @var EntityManagerInterface $em */
+        $em = $container->get('doctrine')->getManager();
+
+        // 1. Сначала удалить reset_password_requests
+        $em->createQuery('DELETE FROM App\Entity\ResetPasswordRequest')->execute();
+
+        // 2. Потом удалить пользователей
+        $em->createQuery('DELETE FROM App\Entity\User')->execute();
+
+        $em->flush();
+
+        $this->em = $em;
+        $this->userRepository = $container->get(UserRepository::class);
+    }
+
+    public function testResetPasswordController(): void
+    {
+        $this->markTestSkipped('Functional tests require refactoring.');
+
+        $user = (new User())
+            ->setEmail('me@example.com')
+            ->setPassword('a-test-password-that-will-be-changed-later');
+        $this->em->persist($user);
+        $this->em->flush();
+
+        $this->client->request('GET', '/reset-password');
+
+        self::assertResponseIsSuccessful();
+        self::assertPageTitleContains('Reset your password');
+
+        $this->client->submitForm('Send password reset email', [
+            'reset_password_request_form[email]' => 'me@example.com',
+        ]);
+
+        self::assertEmailCount(1);
+
+        self::assertCount(1, $messages = $this->getMailerMessages());
+
+        self::assertEmailAddressContains($messages[0], 'from', 'after@aftaa.ru');
+        self::assertEmailAddressContains($messages[0], 'to', 'me@example.com');
+        self::assertEmailTextBodyContains($messages[0], 'This link will expire in 1 hour.');
+
+        self::assertResponseRedirects('/reset-password/check-email');
+
+        $crawler = $this->client->followRedirect();
+
+        self::assertPageTitleContains('Password Reset Email Sent');
+        self::assertStringContainsString('This link will expire in 1 hour', $crawler->html());
+
+        $email = $messages[0]->toString();
+        preg_match('#(/reset-password/reset/[a-zA-Z0-9]+)#', $email, $resetLink);
+
+        $this->client->request('GET', $resetLink[1]);
+
+        self::assertResponseRedirects('/reset-password/reset');
+
+        $this->client->followRedirect();
+
+        $this->client->submitForm('Reset password', [
+            'change_password_form[plainPassword][first]' => 'newStrongPassword',
+            'change_password_form[plainPassword][second]' => 'newStrongPassword',
+        ]);
+
+        self::assertResponseRedirects('/');
+
+        $user = $this->userRepository->findOneBy(['email' => 'me@example.com']);
+
+        self::assertInstanceOf(User::class, $user);
+
+        /** @var UserPasswordHasherInterface $passwordHasher */
+        $passwordHasher = static::getContainer()->get(UserPasswordHasherInterface::class);
+        self::assertTrue($passwordHasher->isPasswordValid($user, 'newStrongPassword'));
+    }
+}
+
+=== tests/Controller/RegistrationAdvancedControllerTest.php ===
+<?php
+
+namespace App\Tests\Controller;
+
+use App\Repository\UserRepository;
+use Doctrine\ORM\EntityManagerInterface;
+use Symfony\Bridge\Twig\Mime\TemplatedEmail;
+use Symfony\Bundle\FrameworkBundle\KernelBrowser;
+use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
+
+class RegistrationAdvancedControllerTest extends WebTestCase
+{
+    private KernelBrowser $client;
+    private UserRepository $userRepository;
+
+    protected function setUp(): void
+    {
+        $this->client = static::createClient();
+        $container = static::getContainer();
+
+        /** @var EntityManagerInterface $em */
+        $em = $container->get('doctrine')->getManager();
+
+        // 1. Сначала удалить reset_password_requests
+        $em->createQuery('DELETE FROM App\Entity\ResetPasswordRequest')->execute();
+
+        // 2. Потом удалить пользователей
+        $em->createQuery('DELETE FROM App\Entity\User')->execute();
+
+        $em->flush();
+
+        $this->em = $em;
+        $this->userRepository = $container->get(UserRepository::class);
+    }
+
+    public function testRegister(): void
+    {
+        $this->markTestSkipped('Functional tests require refactoring.');
+
+        $this->client->request('GET', '/register');
+        self::assertResponseIsSuccessful();
+        self::assertPageTitleContains('Register');
+
+        $this->client->submitForm('Register', [
+            'registration_form[email]' => 'me@example.com',
+            'registration_form[plainPassword]' => 'password',
+            'registration_form[agreeTerms]' => true,
+        ]);
+
+        self::assertCount(1, $this->userRepository->findAll());
+        self::assertFalse(($user = $this->userRepository->findAll()[0])->isVerified());
+
+        self::assertEmailCount(1);
+
+        self::assertCount(1, $messages = $this->getMailerMessages());
+        self::assertEmailAddressContains($messages[0], 'from', 'after@aftaa.ru');
+        self::assertEmailAddressContains($messages[0], 'to', 'me@example.com');
+        self::assertEmailTextBodyContains($messages[0], 'This link will expire in 1 hour.');
+
+        $this->client->followRedirect();
+        $this->client->loginUser($user);
+
+        /** @var TemplatedEmail $templatedEmail */
+        $templatedEmail = $messages[0];
+        $messageBody = $templatedEmail->getHtmlBody();
+        self::assertIsString($messageBody);
+
+        preg_match('#(http://localhost/verify/email.+)">#', $messageBody, $resetLink);
+
+        $this->client->request('GET', $resetLink[1]);
+        $this->client->followRedirect();
+
+        self::assertTrue(static::getContainer()->get(UserRepository::class)->findAll()[0]->isVerified());
+    }
+}
+
+=== tests/Controller/TaskControllerTest.php ===
+<?php
+
+namespace App\Tests\Controller;
+
+use App\Dto\TaskListQuery;
+use App\Entity\Task;
+use App\Enum\TaskFilter;
+use App\Enum\TaskOrder;
+use App\Enum\TaskSort;
+use App\Enum\TaskStatus;
+use App\Repository\UserRepository;
+use App\ValueObject\Pagination\Limit;
+use App\ValueObject\Pagination\Page;
+use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
+use Symfony\Contracts\Cache\TagAwareCacheInterface;
+
+class TaskControllerTest extends WebTestCase
+{
+    public function testIndex(): void
+    {
+        $client = static::createClient([], [
+            'HTTP_HOST' => 'localhost:8003',
+        ]);
+        $client->request('GET', '/task/');
+
+        $this->assertResponseRedirects('/login');
+    }
+
+    public function testNewTaskPageRequiresLogin(): void
+    {
+        $client = static::createClient([], [
+            'HTTP_HOST' => 'localhost:8003',
+        ]);
+        $client->request('GET', '/task/new');
+
+        $this->assertResponseRedirects('/login');
+    }
+
+    public function testTasksPageWorksWhenLoggedIn(): void
+    {
+        $client = static::createClient([], [
+            'HTTP_HOST' => 'localhost:8003',
+        ]);
+
+        $userRepository = static::getContainer()->get(UserRepository::class);
+        $testUser = $userRepository->findOneByEmail('test@example.com');
+
+        if (!$testUser) {
+            $this->markTestSkipped('No test user found. Run seeds first.');
+        }
+
+        $client->loginUser($testUser);
+        $client->request('GET', '/task');
+        $this->assertResponseIsSuccessful();
+        $this->assertSelectorTextContains('h1', 'Список задач');
+    }
+
+    public function testCacheIsInvalidatedOnTaskCreation(): void
+    {
+        self::bootKernel();
+        $container = static::getContainer();
+
+        /** @var TagAwareCacheInterface $cache */
+        $cache = $container->get('cache.app.taggable');
+
+        /** @var \App\Service\TaskListerInterface $cachedLister */
+        $cachedLister = $container->get(\App\Service\TaskListerInterface::class);
+
+        /** @var \Doctrine\ORM\EntityManagerInterface $entityManager */
+        $entityManager = $container->get(\Doctrine\ORM\EntityManagerInterface::class);
+
+        $query = new TaskListQuery(
+            sort: TaskSort::NAME,
+            order: TaskOrder::ASC,
+            filter: TaskFilter::ALL,
+            page: new Page(1),
+            limit: new Limit(10),
+        );
+        $cachedLister->getFilteredAndSortedTasks($query);
+
+        $cacheKey = 'tasks_list_all_name_asc_p1_l10';
+        $this->assertTrue($cache->getItem($cacheKey)->isHit(), 'Кэш прогрет');
+
+        $task = new Task();
+        $task->setName('Тестовая задача из PHPUnit');
+        $task->setStatus(TaskStatus::NOT_COMPLETED);
+
+        $entityManager->persist($task);
+        $entityManager->flush();
+
+        $cacheItemAfter = $cache->getItem($cacheKey);
+        $this->assertFalse($cacheItemAfter->isHit(), 'Кэш сброшен листенером');
+    }
+}
+
+=== tests/Controller/SecurityControllerTest.php ===
+<?php
+
+namespace App\Tests\Controller;
+
+use App\Entity\User;
+use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
+
+class SecurityControllerTest extends WebTestCase
+{
+    public function testLoginPageLoads(): void
+    {
+        $client = static::createClient();
+        $client->request('GET', '/login');
+
+        $this->assertResponseIsSuccessful();
+        $this->assertSelectorTextContains('h1', 'Please sign in');
+    }
+
+    public function testLoginWithValidCredentials(): void
+    {
+        $client = static::createClient();
+
+        // 1. Создаём пользователя
+        $user = new User();
+        $user->setEmail('test@example.com');
+        $user->setPassword(
+            static::getContainer()->get('security.password_hasher')->hashPassword($user, 'password')
+        );
+        $user->setDisplayName('Test User');
+
+        $em = static::getContainer()->get('doctrine')->getManager();
+        $em->persist($user);
+        $em->flush();
+
+        // 2. Получаем CSRF-токен
+        $crawler = $client->request('GET', '/login');
+        $csrfToken = $crawler->filter('input[name="_csrf_token"]')->attr('value');
+
+        // 3. Отправляем форму логина с CSRF-токеном
+        $client->request('POST', '/login', [
+            'email' => 'test@example.com',
+            'password' => 'password',
+            '_csrf_token' => $csrfToken,
+        ]);
+
+        $this->assertResponseRedirects('/task');
+        $client->followRedirect();
+        $this->assertResponseIsSuccessful();
+        $this->assertSelectorTextContains('h1', 'Список задач');
+    }
+
+    public function testLoginWithInvalidCredentials(): void
+    {
+        $client = static::createClient();
+        $client->request('POST', '/login', [
+            'email' => 'wrong@example.com',
+            'password' => 'wrong',
+        ]);
+
+        $this->assertResponseRedirects('/login');
+    }
+
+    public function testLogoutRedirects(): void
+    {
+        $client = static::createClient();
+        $client->request('GET', '/logout');
+
+        $this->assertResponseRedirects();
+    }
+}
+
+=== tests/bootstrap.php ===
+<?php
+
+use Symfony\Component\Dotenv\Dotenv;
+
+require dirname(__DIR__).'/vendor/autoload.php';
+
+if (file_exists(dirname(__DIR__).'/config/bootstrap.php')) {
+    require dirname(__DIR__).'/config/bootstrap.php';
+} elseif (method_exists(Dotenv::class, 'bootEnv')) {
+    new Dotenv()->bootEnv(dirname(__DIR__).'/.env');
+}
+
+=== tests/Service/CachedTaskListerTest.php ===
+<?php
+
+namespace App\Tests\Service;
+
+use App\Dto\PaginatedResult;
+use App\Dto\TaskListQuery;
+use App\Enum\TaskFilter;
+use App\Enum\TaskOrder;
+use App\Enum\TaskSort;
+use App\Service\CachedTaskLister;
+use App\Service\TaskListerInterface;
+use App\ValueObject\Pagination\Limit;
+use App\ValueObject\Pagination\Page;
+use PHPUnit\Framework\TestCase;
+use Psr\Log\LoggerInterface;
+use Symfony\Component\Cache\Adapter\ArrayAdapter;
+use Symfony\Component\Cache\Adapter\TagAwareAdapter;
+
+class CachedTaskListerTest extends TestCase
+{
+    public function testGetFilteredAndSortedTasksUsesCache(): void
+    {
+        $delegateMock = $this->createMock(TaskListerInterface::class);
+        $expectedResult = new PaginatedResult([], 1, 0, 10);
+
+        $delegateMock->expects($this->once())
+            ->method('getFilteredAndSortedTasks')
+            ->willReturn($expectedResult);
+
+        $cache = new TagAwareAdapter(new ArrayAdapter());
+
+        // Создаём мок для логгера
+        $logger = $this->createMock(LoggerInterface::class);
+        $logger->expects($this->never()) // Логгер не должен вызываться в этом тесте
+        ->method('error');
+
+        $cachedLister = new CachedTaskLister(
+            $delegateMock,
+            $cache,
+            $logger // 👈 Передаём логгер
+        );
+
+        $query = new TaskListQuery(
+            sort: TaskSort::NAME,
+            order: TaskOrder::ASC,
+            filter: TaskFilter::ALL,
+            page: new Page(1),
+            limit: new Limit(10),
+        );
+
+        $result1 = $cachedLister->getFilteredAndSortedTasks($query);
+        $result2 = $cachedLister->getFilteredAndSortedTasks($query);
+
+        $this->assertSame($expectedResult, $result1);
+        $this->assertEquals($expectedResult, $result2);
+    }
+}
+
+=== tests/Service/TaskListerTest.php ===
+<?php
+
+namespace App\Tests\Service;
+
+use App\Dto\PaginatedResult;
+use App\Dto\TaskListQuery;
+use App\Enum\TaskFilter;
+use App\Enum\TaskOrder;
+use App\Enum\TaskSort;
+use App\Factory\SortingStrategyFactory;
+use App\Factory\SpecificationFactory;
+use App\Repository\TaskRepository;
+use App\Service\DoctrinePaginator;
+use App\Service\TaskLister;
+use App\Specification\SpecificationInterface;
+use App\Strategy\SortingStrategyInterface;
+use App\ValueObject\Pagination\Limit;
+use App\ValueObject\Pagination\Page;
+use Doctrine\ORM\QueryBuilder;
+use PHPUnit\Framework\TestCase;
+
+class TaskListerTest extends TestCase
+{
+    public function testApplyFilterAndSorting(): void
+    {
+        $qb = $this->createMock(QueryBuilder::class);
+
+        $repository = $this->createMock(TaskRepository::class);
+        $repository->expects($this->once())
+            ->method('createQueryBuilder')
+            ->willReturn($qb);
+
+        $specification = $this->createMock(SpecificationInterface::class);
+        $specification->expects($this->once())
+            ->method('apply')
+            ->with($qb);
+
+        $specificationFactory = $this->createMock(SpecificationFactory::class);
+        $specificationFactory->expects($this->once())
+            ->method('getSpecification')
+            ->with('completed')
+            ->willReturn($specification);
+
+        $sortingStrategy = $this->createMock(SortingStrategyInterface::class);
+        $sortingStrategy->expects($this->once())
+            ->method('apply')
+            ->with($qb, 'asc');
+
+        $sortingStrategyFactory = $this->createMock(SortingStrategyFactory::class);
+        $sortingStrategyFactory->expects($this->once())
+            ->method('getStrategy')
+            ->with('name')
+            ->willReturn($sortingStrategy);
+
+        $paginator = $this->createMock(DoctrinePaginator::class);
+        $paginator->expects($this->once())
+            ->method('paginate')
+            ->with($qb, new Page(2), new Limit(5))
+            ->willReturn(new PaginatedResult([], 2, 0, 5));
+
+        $query = new TaskListQuery(
+            sort: TaskSort::NAME,
+            order: TaskOrder::ASC,
+            filter: TaskFilter::COMPLETED,
+            page: new Page(2),
+            limit: new Limit(5),
+        );
+
+        $service = new TaskLister($repository, $sortingStrategyFactory, $specificationFactory, $paginator);
+        $result = $service->getFilteredAndSortedTasks($query);
+
+        $this->assertInstanceOf(PaginatedResult::class, $result);
+    }
+}
+
+=== tests/Functional/TaskControllerFunctionalTest.php ===
+<?php
+
+namespace App\Tests\Functional;
+
+use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
+
+class TaskControllerFunctionalTest extends WebTestCase
+{
+    protected function setUp(): void
+    {
+        $this->markTestSkipped('Functional tests require refactoring.');
+    }
+
+    public function testFilterByCompleted(): void
+    {
+        $client = static::createClient([], [
+            'HTTP_HOST' => 'localhost:8003',
+        ]);
+        $client->request('GET', '/task?filter=completed');
+        $this->assertResponseRedirects('/login');
+    }
+
+    public function testFilterByNotCompleted(): void
+    {
+        $client = static::createClient([], [
+            'HTTP_HOST' => 'localhost:8003',
+        ]);
+        $client->request('GET', '/task?filter=not_completed');
+        $this->assertResponseRedirects('/login');
+    }
+
+    public function testSortByNameAsc(): void
+    {
+        $client = static::createClient([], [
+            'HTTP_HOST' => 'localhost:8003',
+        ]);
+        $client->request('GET', '/task?sort=name&order=asc');
+        $this->assertResponseRedirects('/login');
     }
 }
 
