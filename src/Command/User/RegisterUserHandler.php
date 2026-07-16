@@ -24,13 +24,11 @@ final readonly class RegisterUserHandler
      */
     public function __invoke(RegisterUserCommand $command): void
     {
-        // 1. Проверка на существующего пользователя
         $existing = $this->userRepository->findOneBy(['email' => $command->email]);
         if ($existing) {
             throw new \DomainException('User with this email already exists');
         }
 
-        // 2. Создание пользователя
         $user = new User();
         $user->setEmail($command->email);
         $user->setDisplayName($command->displayName);
@@ -40,7 +38,6 @@ final readonly class RegisterUserHandler
 
         $this->userRepository->save($user);
 
-        // 3. Событие
         $this->eventBus->dispatch(new UserRegisteredEvent(
             userId: $user->getId(),
             email: $user->getEmail(),

@@ -11,7 +11,7 @@ use OpenApi\Attributes as OA;
 #[Route('/api/statuses', name: 'api_statuses_')]
 class StatusController extends AbstractController
 {
-    public function __construct(private StatusRepository $repository) {}
+    public function __construct(private readonly StatusRepository $repository) {}
 
     #[OA\Get(
         path: '/api/statuses',

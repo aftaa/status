@@ -17,6 +17,9 @@ final readonly class UserRegisteredEventHandler
         private EmailVerifier $emailVerifier,
     ) {}
 
+    /**
+     * @throws \Throwable
+     */
     public function __invoke(UserRegisteredEvent $event): void
     {
         $user = $this->userRepository->find($event->userId);
