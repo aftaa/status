@@ -4,7 +4,9 @@ namespace App\Query\Task;
 
 use App\Entity\Task;
 use App\Repository\TaskRepository;
+use Symfony\Component\Messenger\Attribute\AsMessageHandler;
 
+#[AsMessageHandler(bus: 'query.bus')]
 readonly class GetTaskHandler
 {
     public function __construct(

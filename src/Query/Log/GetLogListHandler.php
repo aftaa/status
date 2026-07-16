@@ -6,7 +6,7 @@ use App\Dto\PaginatedResult;
 use App\Service\TaskEventLogger;
 use Symfony\Component\Messenger\Attribute\AsMessageHandler;
 
-#[AsMessageHandler('query.bus')]
+#[AsMessageHandler(bus: 'query.bus')]
 final readonly class GetLogListHandler
 {
     public function __construct(

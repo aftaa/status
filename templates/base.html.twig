@@ -25,6 +25,7 @@
 <body>
 <div class="container mt-4">
     {% if app.user %}
+        Hi, {{ app.user.displayName }}! |
         <a href="{{ path('app_logout') }}">Logout</a> |
     {% else %}
         <a href="{{ path('app_login') }}">Login</a> |

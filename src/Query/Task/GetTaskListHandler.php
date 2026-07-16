@@ -6,7 +6,7 @@ use App\Dto\PaginatedResult;
 use App\Service\TaskListerInterface;
 use Symfony\Component\Messenger\Attribute\AsMessageHandler;
 
-#[AsMessageHandler]
+#[AsMessageHandler(bus: 'query.bus')]
 readonly class GetTaskListHandler
 {
     public function __construct(

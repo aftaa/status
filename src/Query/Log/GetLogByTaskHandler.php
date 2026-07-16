@@ -5,7 +5,7 @@ namespace App\Query\Log;
 use App\Service\TaskEventLogger;
 use Symfony\Component\Messenger\Attribute\AsMessageHandler;
 
-#[AsMessageHandler('query.bus')]
+#[AsMessageHandler(bus: 'query.bus')]
 final readonly class GetLogByTaskHandler
 {
     public function __construct(
