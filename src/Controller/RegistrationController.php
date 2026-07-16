@@ -3,7 +3,7 @@
 namespace App\Controller;
 
 use App\Command\User\RegisterUserCommand;
-use App\Dto\User\RegistrationDto;
+use App\Dto\RegistrationDto;
 use App\Entity\User;
 use App\Form\RegistrationFormType;
 use App\Security\EmailVerifier;
