@@ -3,7 +3,12 @@
 # ==========================================
 FROM php:8.5-fpm AS base
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update
+
+RUN apt-get install -y librabbitmq-dev
+RUN pecl install amqp && docker-php-ext-enable amqp
+
+RUN apt-get install -y --no-install-recommends \
     curl \
     git \
     mc \
@@ -89,6 +94,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libonig5 \
     libicu76 \
     libssl3t64 \
+    librabbitmq \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Копируем конфигурацию opcache

@@ -103,6 +103,25 @@ services:
             - app
             - data
 
+    rabbitmq:
+        image: rabbitmq:4.3.2-management-alpine
+        container_name: rabbitmq
+        hostname: rabbitmq
+        ports:
+            - "5672:5672"    # основной порт для подключения
+            - "15672:15672"  # веб-интерфейс (менеджмент)
+        environment:
+            RABBITMQ_DEFAULT_USER: guest
+            RABBITMQ_DEFAULT_PASS: guest
+            RABBITMQ_DEFAULT_VHOST: /
+        volumes:
+            - ./docker/rabbitmq/data:/var/lib/rabbitmq
+            - ./docker/rabbitmq/logs:/var/log/rabbitmq
+        restart: unless-stopped
+        networks:
+            - app
+            - data
+
 networks:
     app:
         driver: bridge

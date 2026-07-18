@@ -22,6 +22,7 @@
 /docker/mysql/data
 /docker/redis/data
 /docker/mongodb/data
+/docker/rabbitmq
 /docker/nginx/logs
 
 ###> lexik/jwt-authentication-bundle ###
