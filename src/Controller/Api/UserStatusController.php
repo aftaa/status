@@ -2,14 +2,19 @@
 
 namespace App\Controller\Api;
 
+use App\Command\User\UpdateUserStatusCommand;
 use App\Entity\User;
+use App\Query\Status\GetCurrentStatusQuery;
 use App\Repository\StatusRepository;
+use App\Service\CommandBus;
+use App\Service\QueryBus;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\Mercure\HubInterface;
 use Symfony\Component\Mercure\Update;
+use Symfony\Component\Messenger\Exception\ExceptionInterface;
 use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\Security\Http\Attribute\CurrentUser;
 use OpenApi\Attributes as OA;
@@ -18,11 +23,13 @@ use OpenApi\Attributes as OA;
 class UserStatusController extends AbstractController
 {
     public function __construct(
-        private StatusRepository $statusRepository,
-        private EntityManagerInterface $em,
-        private HubInterface $hub,
+        private readonly EntityManagerInterface $em,
+        private readonly CommandBus             $commandBus,
     ) {}
 
+    /**
+     * @throws ExceptionInterface
+     */
     #[OA\Get(
         path: '/api/me/status',
         description: 'Получить текущий статус',
@@ -44,10 +51,10 @@ class UserStatusController extends AbstractController
         ]
     )]
     #[Route('/status', name: 'get_status', methods: ['GET'])]
-    public function getStatus(#[CurrentUser] User $user): JsonResponse
+    public function getStatus(#[CurrentUser] User $user, QueryBus $bus): JsonResponse
     {
         return $this->json(
-            ['status' => $user->getCurrentStatus()],
+            ['status' => $bus->dispatch(new GetCurrentStatusQuery(user: $user))],
             context: ['groups' => 'status:read']
         );
     }
@@ -89,10 +96,7 @@ class UserStatusController extends AbstractController
         ]
     )]
     #[Route('/status', name: 'update_status', methods: ['PUT'])]
-    public function updateStatus(
-        Request $request,
-        #[CurrentUser] User $user,
-    ): JsonResponse {
+    public function updateStatus(Request $request, #[CurrentUser] User $user): JsonResponse {
         $data = json_decode($request->getContent(), true);
         $statusSlug = $data['status'] ?? null;
 
@@ -100,34 +104,16 @@ class UserStatusController extends AbstractController
             return $this->json(['error' => 'Status slug is required'], 400);
         }
 
-        $status = $this->statusRepository->findOneBy(['slug' => $statusSlug]);
+        try {
+            $result = $this->commandBus->dispatch(
+                new UpdateUserStatusCommand($user->getId(), $statusSlug)
+            );
 
-        if (!$status) {
-            return $this->json(['error' => 'Status not found'], 404);
+            return $this->json($result);
+        } catch (\InvalidArgumentException $e) {
+            return $this->json(['error' => $e->getMessage()], 404);
+        } catch (ExceptionInterface $e) {
         }
-
-        $user->setCurrentStatus($status);
-        $this->em->flush();
-
-        $update = new Update(
-            topics: ['user/' . $user->getId() . '/status'],
-            data: json_encode([
-                'userId' => $user->getId(),
-                'status' => [
-                    'slug' => $status->getSlug(),
-                    'name' => $status->getName(),
-                    'color' => $status->getColor(),
-                    'bgColor' => $status->getBgColor(),
-                    'iconUrl' => $status->getIconUrl(),
-                ]
-            ])
-        );
-        $this->hub->publish($update);
-
-        return $this->json([
-            'message' => 'Status updated',
-            'status' => $status,
-        ], context: ['groups' => 'status:read']);
     }
 
     #[OA\Delete(
