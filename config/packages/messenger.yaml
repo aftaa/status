@@ -1,36 +1,38 @@
 framework:
     messenger:
-        # 1. Явно указываем транспорт для упавших сообщений
         failure_transport: failed
 
         transports:
+#            async:
+#                dsn: '%env(MESSENGER_TRANSPORT_DSN)%'
+#                # Настройка повторов отличная, добавим только начальную задержку
+#                retry_strategy:
+#                    max_retries: 3
+#                    delay: 1000          # Первая попытка через 1 секунду
+#                    multiplier: 2        # Каждая следующая задержка удваивается (1с -> 2с -> 4с)
+#
             async:
-                dsn: '%env(MESSENGER_TRANSPORT_DSN)%'
-                # Настройка повторов отличная, добавим только начальную задержку
-                retry_strategy:
-                    max_retries: 3
-                    delay: 1000          # Первая попытка через 1 секунду
-                    multiplier: 2        # Каждая следующая задержка удваивается (1с -> 2с -> 4с)
-
+                dsn: '%env(RABBITMQ_URL)%'
+                options:
+                    exchange:
+                        name: 'async_exchange'
+                        type: 'direct'
+                    queues:
+                        messages:
+                            arguments:
+                                x-max-priority: 10
             failed: 'doctrine://default?queue_name=failed'
-
-        # 2. Делаем command.bus дефолтной. Запросы (Query) ВСЕГДА нужно вызывать явно через QueryBus
         default_bus: command.bus
 
         buses:
             event.bus: ~
 
             command.bus:
-                # Отключаем дефолтные мидлвары, если нужно строго контролировать транзакции
                 middleware:
                     - doctrine_transaction
 
             query.bus:
-                # Для запросов запрещаем оборачивать всё в транзакции базы данных (прирост скорости)
                 middleware: []
 
         routing:
-            # Тяжёлые команды — в асинхронную очередь
-
-            # Рекомендация: если команд станет много, лучше маркировать их интерфейсом
             'App\Contract\AsyncMessageInterface': async

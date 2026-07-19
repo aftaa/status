@@ -23,7 +23,6 @@ class TaskController extends AbstractController
     public function __construct(
         private readonly QueryBus            $queryBus,
         private readonly MessageBusInterface $commandBus,
-        private readonly MessageBusInterface $messageBus,
     ) {
     }
 

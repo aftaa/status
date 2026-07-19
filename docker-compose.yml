@@ -91,6 +91,7 @@ services:
         volumes:
             - ~/.gitconfig:/home/appuser/.gitconfig:ro
             - .:/var/www/test3
+            - ./docker/php/supervisor/log:/var/log/supervisor
         restart: always
         depends_on:
             mysql:

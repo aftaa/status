@@ -13,6 +13,7 @@ RUN apt-get install -y --no-install-recommends \
     git \
     mc \
     unzip \
+    supervisor \
     libcurl4-openssl-dev \
     libxml2-dev \
     libonig-dev \
@@ -26,6 +27,10 @@ RUN printf "no\n" | pecl install redis && docker-php-ext-enable redis
 RUN pecl install mongodb && docker-php-ext-enable mongodb
 
 COPY --from=composer:latest /usr/bin/composer /usr/local/bin/composer
+
+RUN mkdir -p /var/log/supervisor /etc/supervisor/conf.d
+COPY docker/php/supervisor/supervisord.conf /etc/supervisor/supervisord.conf
+COPY docker/php/supervisor/messenger.conf /etc/supervisor/conf.d/messenger.conf
 
 WORKDIR /var/www/test3
 
@@ -60,10 +65,13 @@ RUN sed -i 's/#force_color_prompt=yes/force_color_prompt=yes/g' /etc/skel/.bashr
     && cp /etc/skel/.bashrc /home/appuser/.bashrc \
     && chown appuser:appgroup /home/appuser/.bashrc
 
-USER appuser
+RUN echo "error_log = /var/log/php-fpm.log" > /usr/local/etc/php/conf.d/logging.ini
+RUN touch /var/log/php-fpm.log && chown appuser:appgroup /var/log/php-fpm.log
+RUN chown -R appuser:appgroup /var/log/supervisor /var/run
+COPY docker/php/zz-docker.conf /usr/local/etc/php-fpm.d/zz-docker.conf
 
 # Код сюда не копируем, подразумевается монтирование папки через volumes в docker-compose
-CMD ["php-fpm"]
+CMD ["/usr/bin/supervisord", "-n", "-c", "/etc/supervisor/supervisord.conf"]
 
 # ==========================================
 # STAGE 3: builder (Сборка продакшн-вендоров и кэша)
