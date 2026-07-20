@@ -43,3 +43,19 @@ services:
     MongoDB\Client:
         arguments:
             - '%env(MONGODB_URL)%'
+
+    redis_client:
+        class: Redis
+        factory: ['Redis', 'connect']
+        arguments:
+            - '%env(REDIS_HOST)%'
+            - '%env(REDIS_PORT)%'
+
+    Symfony\Component\HttpFoundation\Session\Storage\Handler\RedisSessionHandler:
+        arguments:
+            - '@redis_client'
+
+    session.handler.redis:
+        class: Symfony\Component\HttpFoundation\Session\Storage\Handler\RedisSessionHandler
+        arguments:
+            - '@cache.app'
