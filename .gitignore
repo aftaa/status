@@ -24,6 +24,7 @@
 /docker/mongodb/data
 /docker/rabbitmq
 /docker/nginx/logs
+/docker/php/supervisor/log
 
 ###> lexik/jwt-authentication-bundle ###
 /config/jwt/*.pem
