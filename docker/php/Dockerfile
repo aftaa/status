@@ -82,7 +82,7 @@ RUN composer run-script post-install-cmd --no-interaction || true \
 # ==========================================
 FROM php:8.5-fpm AS production
 
-# Ставим ТОЛЬКО легковесные рантайм-библиотеки (без заголовков -dev)
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libcurl4t64 \
     libxml2 \
