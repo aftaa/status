@@ -15,7 +15,7 @@ services:
             - app
 
     mysql:
-        image: mysql:9.7.0
+        image: mysql:9.7.1
         ports:
             - "8004:3306"
         volumes:
