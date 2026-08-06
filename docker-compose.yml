@@ -78,8 +78,8 @@ services:
                 publish_origins "http://localhost:8002"
                 anonymous 1
                 subscriptions 1
-                keep_alive 10
-                stream_keepalive 10
+                keep_alive 1
+                stream_keepalive 1
         ports:
             - "8008:80"
         restart: always
