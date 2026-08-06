@@ -54,7 +54,7 @@ final readonly class UpdateUserStatusHandler
         return [
             'message' => 'Status was successfully updated',
             'status' => $dto,
-            'statusTime' => $user->getStatusTime() instanceof \DateTimeInterface ? $user->getStatusTime()->format(\DateTimeInterface::ATOM) : $user->getStatusTime(),
+            'statusTime1' => $user->getStatusTime() instanceof \DateTimeInterface ? $user->getStatusTime()->format(\DateTimeInterface::ATOM) : $user->getStatusTime(),
         ];
     }
 }
