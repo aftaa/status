@@ -46,7 +46,7 @@ final readonly class UpdateUserStatusHandler
             color: $status->getColor(),
             bgColor: $status->getBgColor(),
             iconUrl: $status->getIconUrl(),
-            statusTime: $user->getStatusTime(),
+            statusTime: $user->getStatusTime() instanceof \DateTimeInterface ? $user->getStatusTime()->format(\DateTimeInterface::ATOM) : $user->getStatusTime(),
         );
 
         $this->eventBus->dispatch(new UserStatusUpdatedEvent($dto));
