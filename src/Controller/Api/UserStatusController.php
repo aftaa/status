@@ -27,36 +27,43 @@ class UserStatusController extends AbstractController
         private readonly CommandBus             $commandBus,
     ) {}
 
-    /**
-     * @throws ExceptionInterface
-     */
     #[OA\Get(
-        path: '/api/me/status',
-        description: 'Получить текущий статус',
+        path: '/api/me/status-with-time',
+        description: 'Получить текущий статус и время его установки',
         security: [['bearerAuth' => []]],
         responses: [
             new OA\Response(
                 response: 200,
-                description: 'Текущий статус',
+                description: 'Текущий статус и время его установки',
                 content: new OA\JsonContent(
                     properties: [
                         new OA\Property(
                             property: 'status',
                             ref: '#/components/schemas/Status',
-                            nullable: true
-                        )
-                    ]
-                )
-            )
-        ]
+                            nullable: true,
+                        ),
+                        new OA\Property(
+                            property: 'statusTime',
+                            type: 'string',
+                            format: 'date-time',
+                            nullable: true,
+                        ),
+                    ],
+                ),
+            ),
+        ],
     )]
     #[Route('/status', name: 'get_status', methods: ['GET'])]
     public function getStatus(#[CurrentUser] User $user, QueryBus $bus): JsonResponse
     {
-        return $this->json(
-            ['status' => $bus->dispatch(new GetCurrentStatusQuery(user: $user))],
-            context: ['groups' => 'status:read']
-        );
+        try {
+            return $this->json(
+                ['status' => $bus->dispatch(new GetCurrentStatusQuery(user: $user))],
+                context: ['groups' => 'status:read']
+            );
+        } catch (ExceptionInterface $e) {
+            return $this->json(['error' => $e->getMessage()], 500);
+        }
     }
 
     #[OA\Put(
@@ -113,6 +120,7 @@ class UserStatusController extends AbstractController
         } catch (\InvalidArgumentException $e) {
             return $this->json(['error' => $e->getMessage()], 404);
         } catch (ExceptionInterface $e) {
+            return $this->json(['error' => $e->getMessage()], 404);
         }
     }
 

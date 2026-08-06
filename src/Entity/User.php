@@ -57,6 +57,10 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     #[OA\Property(example: 'Максим', nullable: true)]
     private ?string $displayName = null;
 
+    #[ORM\Column(type: 'datetime_immutable', nullable: true)]
+    #[Groups(['user:read'])]
+    private ?\DateTimeImmutable $statusTime = null;
+
     // Геттеры и сеттеры без изменений
     public function getId(): ?int
     {
@@ -141,5 +145,17 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     {
         $this->displayName = $displayName;
         return $this;
+    }
+
+    public function setStatusTime(?\DateTimeImmutable $statusTime): static
+    {
+        $this->statusTime = $statusTime;
+
+        return $this;
+    }
+
+    public function getStatusTime(): ?\DateTimeImmutable
+    {
+        return $this->statusTime;
     }
 }

@@ -26,6 +26,7 @@ final readonly class UserStatusUpdatedEventHandler
                     'color' => $event->status->color,
                     'bgColor' => $event->status->bgColor,
                     'iconUrl' => $event->status->iconUrl,
+                    'statusTime' => $event->status->statusTime,
                 ]
             ])
         );

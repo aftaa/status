@@ -36,6 +36,7 @@ final readonly class UpdateUserStatusHandler
         }
 
         $user->setCurrentStatus($status);
+        $user->setStatusTime(new \DateTimeImmutable());
         $this->userRepository->save($user);
 
         $dto = new UserStatusDto(
@@ -45,6 +46,7 @@ final readonly class UpdateUserStatusHandler
             color: $status->getColor(),
             bgColor: $status->getBgColor(),
             iconUrl: $status->getIconUrl(),
+            statusTime: $user->getStatusTime(),
         );
 
         $this->eventBus->dispatch(new UserStatusUpdatedEvent($dto));
