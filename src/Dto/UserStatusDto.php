@@ -11,7 +11,7 @@ final readonly class UserStatusDto
         public string  $color,
         public string  $bgColor,
         public ?string $iconUrl,
-        public ?\DateTimeImmutable $statusTime,
+        public ?string $statusTime,
     ) {
     }
 }
