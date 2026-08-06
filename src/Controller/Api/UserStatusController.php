@@ -28,7 +28,7 @@ class UserStatusController extends AbstractController
     ) {}
 
     #[OA\Get(
-        path: '/api/me/status-with-time',
+        path: '/api/me',
         description: 'Получить текущий статус и время его установки',
         security: [['bearerAuth' => []]],
         responses: [
@@ -58,7 +58,7 @@ class UserStatusController extends AbstractController
     {
         try {
             return $this->json(
-                ['status' => $bus->dispatch(new GetCurrentStatusQuery(user: $user))],
+                $bus->dispatch(new GetCurrentStatusQuery(user: $user)),
                 context: ['groups' => 'status:read']
             );
         } catch (ExceptionInterface $e) {
@@ -94,7 +94,13 @@ class UserStatusController extends AbstractController
                         new OA\Property(
                             property: 'status',
                             ref: '#/components/schemas/Status'
-                        )
+                        ),
+                        new OA\Property(
+                            property: 'statusTime',
+                            type: 'string',
+                            format: 'date-time',
+                            nullable: true,
+                        ),
                     ]
                 )
             ),
@@ -118,9 +124,9 @@ class UserStatusController extends AbstractController
 
             return $this->json($result);
         } catch (\InvalidArgumentException $e) {
-            return $this->json(['error' => $e->getMessage()], 404);
+            return $this->json(['error' => $e->getMessage()], 500);
         } catch (ExceptionInterface $e) {
-            return $this->json(['error' => $e->getMessage()], 404);
+            return $this->json(['error' => $e->getMessage()], 500);
         }
     }
 

@@ -23,7 +23,7 @@ final readonly class UpdateUserStatusHandler
     /**
      * @throws ExceptionInterface
      */
-    public function __invoke(UpdateUserStatusCommand $command): UserStatusDto
+    public function __invoke(UpdateUserStatusCommand $command): array
     {
         $user = $this->userRepository->find($command->userId);
         if (!$user) {
@@ -46,11 +46,15 @@ final readonly class UpdateUserStatusHandler
             color: $status->getColor(),
             bgColor: $status->getBgColor(),
             iconUrl: $status->getIconUrl(),
-            //statusTime: $user->getStatusTime(),
+            statusTime: $user->getStatusTime(),
         );
 
         $this->eventBus->dispatch(new UserStatusUpdatedEvent($dto));
 
-        return $dto;
+        return [
+            'message' => 'Status was successfully updated',
+            'status' => $dto,
+            'statusTime' => $user->getStatusTime(),
+        ];
     }
 }
