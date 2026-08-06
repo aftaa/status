@@ -28,7 +28,7 @@ final readonly class UserStatusUpdatedEventHandler
                     'bgColor' => $event->status->bgColor,
                     'iconUrl' => $event->status->iconUrl,
                 ],
-                'statusTime' => $event->status->statusTime?->format(\DateTimeInterface::ATOM),
+                'statusTime' => $event->status->statusTime instanceof \DateTimeInterface ? $event->status->statusTime->format(\DateTimeInterface::ATOM) : $event->status->statusTime,
             ])
         );
 
