@@ -12,6 +12,7 @@ class GetCurrentStatusHandler
     public function __invoke(GetCurrentStatusQuery $query): array
     {
         return [
+            'message' => 'Current status',
             'status' => $query->user->getCurrentStatus() ?? null,
             'statusTime' => $query->user->getStatusTime() ?? null,
         ];

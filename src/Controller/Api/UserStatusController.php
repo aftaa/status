@@ -37,6 +37,7 @@ class UserStatusController extends AbstractController
                 description: 'Текущий статус и время его установки',
                 content: new OA\JsonContent(
                     properties: [
+                        new OA\Property(property: 'message', type: 'string', example: 'Current status'),
                         new OA\Property(
                             property: 'status',
                             ref: '#/components/schemas/Status',
