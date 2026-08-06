@@ -36,7 +36,7 @@ final readonly class UpdateUserStatusHandler
         }
 
         $user->setCurrentStatus($status);
-        $user->setStatusTime(new \DateTimeImmutable());
+        $user->setStatusTime(new \DateTimeImmutable('now'));
         $this->userRepository->save($user);
 
         $dto = new UserStatusDto(
