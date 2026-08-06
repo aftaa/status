@@ -12,7 +12,8 @@ final readonly class UserStatusUpdatedEventHandler
 {
     public function __construct(
         private HubInterface $mercureHub,
-    ) {}
+    ) {
+    }
 
     public function __invoke(UserStatusUpdatedEvent $event): void
     {
@@ -26,8 +27,8 @@ final readonly class UserStatusUpdatedEventHandler
                     'color' => $event->status->color,
                     'bgColor' => $event->status->bgColor,
                     'iconUrl' => $event->status->iconUrl,
-                    'statusTime' => $event->status->statusTime,
-                ]
+                ],
+                'statusTime' => $event->status->statusTime,
             ])
         );
 
